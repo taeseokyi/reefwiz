@@ -72,7 +72,12 @@ A0  (D14) ← DS18B20 DQ      A4/A5     ↔ ADS1115 I2C
 ### 전원 / 접지
 
 ```
-12V DC → L298N x3 (모터/솔레노이드) + Buck 5V (MCU) + Buck 6V (펌프)
+12V DC Jack
+  ├── L298N1, L298N2 (모터 전원, 12V → 펌프)
+  ├── Buck 12V→5V (Arduino, ADS1115, HC-06)
+  └── Buck 12V→6V (XL4015 가변)
+        ├── 도징 펌프 x4 (PWM 컨트롤러 경유)
+        └── L298N3 (솔레노이드 전원, 6V)
 접지: Star Ground Point (DGND/AGND 분리 후 한 점 결합)
 ```
 
