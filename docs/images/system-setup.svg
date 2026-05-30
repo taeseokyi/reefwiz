@@ -135,7 +135,7 @@
         fill="none" stroke="#e53935" stroke-width="2" marker-end="url(#arrow-red)"/>
   <path d="M490,340 Q480,340 480,355 L480,370 Q480,380 470,380 L450,380"
         fill="none" stroke="#e53935" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow-red)"/>
-  <text x="433" y="374" text-anchor="middle" font-size="10" fill="#e53935" font-weight="bold">b</text>
+  <text x="433" y="383" text-anchor="middle" font-size="10" fill="#e53935" font-weight="bold">b</text>
   <rect x="445" y="390" width="60" height="18" rx="4" fill="#e53935"/>
   <text x="475" y="403" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프2</text>
   <text x="475" y="312" text-anchor="middle" font-size="10" fill="#e53935" font-weight="bold">f</text>
