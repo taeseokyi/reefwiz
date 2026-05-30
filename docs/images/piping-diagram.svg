@@ -82,7 +82,7 @@
   <!-- ===== M2: 수조물 비이커 ↔ pH 비이커 (상단 진입) ===== -->
   <circle cx="540" cy="183" r="20" fill="#C62828"/>
   <text x="540" y="187" text-anchor="middle" font-size="12" fill="white" font-weight="bold">M2</text>
-  <text x="540" y="215" text-anchor="middle" font-size="10" fill="#C62828">펌프2 (양방향)</text>
+  <text x="540" y="160" text-anchor="middle" font-size="10" fill="#C62828">펌프2 (양방향)</text>
 
   <!-- M2 forward: 수조물 → M2 → pH (y=178) -->
   <path d="M450,100 L480,100 Q500,100 500,130 L500,178 L518,178" fill="none" stroke="#C62828" stroke-width="2.5" marker-end="url(#arr-r)"/>
@@ -110,8 +110,8 @@
   <line x1="223" y1="237" x2="170" y2="237" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
   <path d="M638,233 L267,233" fill="none" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
 
-  <text x="450" y="215" text-anchor="middle" font-size="10" fill="#E65100" font-weight="bold">f: KCL 공급 (프로브 보관)</text>
-  <text x="450" y="250" text-anchor="middle" font-size="10" fill="#E65100" font-weight="bold">b: KCL 배출 (측정 전)</text>
+  <text x="460" y="218" text-anchor="start" font-size="10" fill="#E65100" font-weight="bold">f: KCL 공급 (프로브 보관)</text>
+  <text x="460" y="248" text-anchor="start" font-size="10" fill="#E65100" font-weight="bold">b: KCL 배출 (측정 전)</text>
 
   <!-- ===== M4: 위즈 탱크 ↔ pH 비이커 (하단 진입) ===== -->
   <rect x="50" y="300" width="120" height="50" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
