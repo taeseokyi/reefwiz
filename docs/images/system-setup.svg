@@ -73,9 +73,9 @@
   <text x="545" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
 
   <!-- pH probe in pH beaker (right side) -->
-  <rect x="580" y="295" width="8" height="80" rx="2" fill="#78909C"/>
-  <rect x="578" y="370" width="12" height="15" rx="3" fill="#546E7A"/>
-  <text x="595" y="340" font-size="8" fill="#546E7A">pH</text>
+  <rect x="585" y="300" width="6" height="70" rx="2" fill="#78909C"/>
+  <rect x="583" y="365" width="10" height="12" rx="3" fill="#546E7A"/>
+  <text x="596" y="330" font-size="9" fill="#546E7A" font-weight="bold">pH</text>
 
   <!-- Air1 bubble in pH 비이커 -->
   <circle cx="515" cy="395" r="3" fill="#90CAF9" opacity="0.7"/>
@@ -173,7 +173,7 @@
   <path d="M810,150 L727,150 L727,230" fill="none" stroke="#E65100" stroke-width="1.5" stroke-dasharray="4,3"/>
 
   <!-- Controller to pH probe -->
-  <path d="M810,120 L790,120 L790,295 L584,295" fill="none" stroke="#78909C" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <path d="M810,120 L790,120 L790,300 L588,300" fill="none" stroke="#78909C" stroke-width="1.5" stroke-dasharray="4,3"/>
 
   <!-- Legend -->
   <rect x="30" y="580" width="940" height="210" rx="8" fill="#FAFAFA" stroke="#CCC" stroke-width="1"/>
