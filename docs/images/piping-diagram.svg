@@ -30,11 +30,11 @@
   </defs>
 
   <!-- Title -->
-  <text x="430" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a1a1a">배관 연결도 (모든 펌프 양방향)</text>
+  <text x="430" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a1a1a">호스 연결도 (모든 펌프 양방향)</text>
   <line x1="120" y1="38" x2="740" y2="38" stroke="#ccc" stroke-width="1"/>
 
   <!-- Section -->
-  <text x="50" y="65" font-size="14" font-weight="bold" fill="#455A64">액체 배관 (연동 펌프 4구, 양방향)</text>
+  <text x="50" y="65" font-size="14" font-weight="bold" fill="#455A64">액체 호스 (연동 펌프 4구, 양방향)</text>
 
   <!-- ===== pH 측정 비이커 (공통 목적지, 크게 배치) ===== -->
   <rect x="640" y="80" width="160" height="240" rx="10" fill="#FFEBEE" stroke="#C62828" stroke-width="2.5"/>
@@ -67,8 +67,8 @@
   <line x1="170" y1="103" x2="223" y2="103" stroke="#1565C0" stroke-width="2.5" marker-end="url(#arr-b)"/>
   <line x1="267" y1="103" x2="318" y2="103" stroke="#1565C0" stroke-width="2.5" marker-end="url(#arr-b)"/>
   <!-- M1 backward -->
-  <line x1="223" y1="117" x2="170" y2="117" stroke="#1565C0" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-b-rev)"/>
-  <line x1="318" y1="117" x2="267" y2="117" stroke="#1565C0" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-b-rev)"/>
+  <line x1="223" y1="117" x2="170" y2="117" stroke="#1565C0" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-b)"/>
+  <line x1="318" y1="117" x2="267" y2="117" stroke="#1565C0" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-b)"/>
 
   <!-- M1 원 (라인 위에 그려짐) -->
   <circle cx="245" cy="110" r="22" fill="#1565C0" stroke="white" stroke-width="2"/>
@@ -138,8 +138,8 @@
   <!-- Separator -->
   <line x1="30" y1="430" x2="830" y2="430" stroke="#ccc" stroke-width="1"/>
 
-  <!-- Section: 에어 배관 -->
-  <text x="50" y="460" font-size="14" font-weight="bold" fill="#455A64">에어 배관 (솔레노이드 밸브)</text>
+  <!-- Section: 에어 호스 -->
+  <text x="50" y="460" font-size="14" font-weight="bold" fill="#455A64">에어 호스 (솔레노이드 밸브)</text>
 
   <rect x="50" y="475" width="120" height="50" rx="8" fill="#E1F5FE" stroke="#0288D1" stroke-width="2"/>
   <text x="110" y="505" text-anchor="middle" font-size="13" font-weight="bold" fill="#0288D1">기포기</text>

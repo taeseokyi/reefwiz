@@ -4,9 +4,9 @@
 
 ![시스템 구성도](images/system-setup.svg)
 
-## 배관 연결
+## 호스 연결
 
-![배관 연결도](images/piping-diagram.svg)
+![호스 연결도](images/piping-diagram.svg)
 
 ## 구성 요소
 
