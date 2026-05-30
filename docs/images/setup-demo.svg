@@ -1,0 +1,247 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 700" font-family="'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="11">
+  <defs>
+    <linearGradient id="water-g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#B3E5FC" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#0288D1" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#E3F2FD" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#BBDEFB" stop-opacity="0.3"/>
+    </linearGradient>
+    <linearGradient id="kcl-g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F9A825" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#CFD8DC"/>
+      <stop offset="100%" stop-color="#90A4AE"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="115%" height="115%">
+      <feDropShadow dx="3" dy="3" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- 배경: 테이블 표면 -->
+  <rect x="0" y="400" width="1100" height="300" fill="#EFEBE9" rx="0"/>
+  <rect x="0" y="395" width="1100" height="8" fill="#D7CCC8" rx="2"/>
+  <text x="550" y="25" text-anchor="middle" font-size="18" font-weight="bold" fill="#37474F">AquaWiz 시스템 셋팅 구성</text>
+
+  <!-- ===== 수조 (왼쪽) ===== -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="180" width="200" height="220" rx="5" fill="url(#glass)" stroke="#64B5F6" stroke-width="2"/>
+    <rect x="35" y="280" width="190" height="115" rx="3" fill="url(#water-g)"/>
+    <!-- 산호 -->
+    <circle cx="80" cy="375" r="12" fill="#FF8A65" opacity="0.5"/>
+    <circle cx="110" cy="380" r="8" fill="#AED581" opacity="0.5"/>
+    <circle cx="150" cy="372" r="14" fill="#CE93D8" opacity="0.4"/>
+    <circle cx="185" cy="378" r="10" fill="#4FC3F7" opacity="0.4"/>
+    <!-- 바닥 모래 -->
+    <rect x="35" y="385" width="190" height="10" rx="2" fill="#FFF3E0" opacity="0.6"/>
+    <!-- 호스 (수조에서 나가는) -->
+    <path d="M230,320 L260,320" fill="none" stroke="#1565C0" stroke-width="3" opacity="0.6"/>
+  </g>
+  <text x="130" y="215" text-anchor="middle" font-size="14" font-weight="bold" fill="#1565C0">수조 (리프 탱크)</text>
+
+  <!-- ===== 위즈 탱크 (중앙) ===== -->
+  <g filter="url(#shadow)">
+    <!-- 락앤락 김치통 몸체 -->
+    <rect x="350" y="220" width="300" height="200" rx="8" fill="#E8F5E9" stroke="#66BB6A" stroke-width="2.5"/>
+    <!-- 뚜껑 (반투명, 살짝 열린 느낌) -->
+    <rect x="345" y="210" width="310" height="15" rx="5" fill="#A5D6A7" stroke="#66BB6A" stroke-width="1.5"/>
+    <!-- 뚜껑 잠금 클립 -->
+    <rect x="370" y="207" width="20" height="8" rx="2" fill="#43A047"/>
+    <rect x="610" y="207" width="20" height="8" rx="2" fill="#43A047"/>
+    <!-- 참조 해수 -->
+    <rect x="358" y="310" width="284" height="103" rx="4" fill="url(#water-g)" opacity="0.5"/>
+
+    <!-- 비이커 1: 수조물 -->
+    <rect x="375" y="260" width="65" height="110" rx="4" fill="white" stroke="#1976D2" stroke-width="1.5" opacity="0.9"/>
+    <rect x="379" y="320" width="57" height="45" rx="2" fill="url(#water-g)"/>
+    <text x="407" y="285" text-anchor="middle" font-size="10" font-weight="bold" fill="#1976D2">수조물</text>
+    <text x="407" y="300" text-anchor="middle" font-size="8" fill="#888">200ml</text>
+    <!-- Air2 버블 -->
+    <circle cx="395" cy="345" r="2" fill="#90CAF9" opacity="0.7"/>
+    <circle cx="400" cy="337" r="1.5" fill="#90CAF9" opacity="0.5"/>
+
+    <!-- 비이커 2: pH 측정 -->
+    <rect x="462" y="260" width="65" height="110" rx="4" fill="white" stroke="#D32F2F" stroke-width="1.5" opacity="0.9"/>
+    <rect x="466" y="320" width="57" height="45" rx="2" fill="url(#water-g)"/>
+    <text x="494" y="280" text-anchor="middle" font-size="10" font-weight="bold" fill="#D32F2F">pH 측정</text>
+    <text x="494" y="295" text-anchor="middle" font-size="8" fill="#888">200ml</text>
+    <!-- pH 프로브 -->
+    <rect x="515" y="270" width="4" height="55" rx="1.5" fill="#607D8B"/>
+    <rect x="513" y="322" width="8" height="8" rx="2" fill="#455A64"/>
+    <text x="530" y="290" font-size="7" fill="#455A64" font-weight="bold">pH</text>
+    <!-- Air1 버블 -->
+    <circle cx="480" cy="348" r="2" fill="#90CAF9" opacity="0.7"/>
+    <circle cx="485" cy="340" r="1.5" fill="#90CAF9" opacity="0.5"/>
+
+    <!-- 비이커 3: KCL -->
+    <rect x="550" y="260" width="65" height="110" rx="4" fill="white" stroke="#F9A825" stroke-width="1.5" opacity="0.9"/>
+    <rect x="554" y="320" width="57" height="45" rx="2" fill="url(#kcl-g)"/>
+    <text x="582" y="285" text-anchor="middle" font-size="10" font-weight="bold" fill="#F9A825">KCL 3%</text>
+    <text x="582" y="300" text-anchor="middle" font-size="8" fill="#888">200ml</text>
+
+    <!-- DS18B20 온도센서 -->
+    <rect x="628" y="290" width="3" height="45" rx="1" fill="#E65100"/>
+    <circle cx="629" cy="338" r="3" fill="#FF6D00"/>
+    <text x="638" y="310" font-size="7" fill="#E65100">DS18B20</text>
+  </g>
+  <text x="500" y="245" text-anchor="middle" font-size="13" font-weight="bold" fill="#2E7D32">위즈 탱크 (락앤락 김치통 3L)</text>
+
+  <!-- ===== 펌프+분배기 하우징 (상단 중앙) ===== -->
+  <g filter="url(#shadow)">
+    <rect x="310" y="60" width="280" height="60" rx="6" fill="#ECEFF1" stroke="#78909C" stroke-width="2"/>
+    <!-- 펌프 4개 -->
+    <g>
+      <rect x="320" y="68" width="42" height="44" rx="3" fill="#BBDEFB" stroke="#1565C0" stroke-width="1"/>
+      <circle cx="341" cy="90" r="12" fill="url(#metal)" stroke="#607D8B" stroke-width="1"/>
+      <circle cx="341" cy="90" r="4" fill="#455A64"/>
+      <text x="341" y="115" text-anchor="middle" font-size="7" fill="#1565C0" font-weight="bold">M1</text>
+    </g>
+    <g>
+      <rect x="370" y="68" width="42" height="44" rx="3" fill="#FFCDD2" stroke="#C62828" stroke-width="1"/>
+      <circle cx="391" cy="90" r="12" fill="url(#metal)" stroke="#607D8B" stroke-width="1"/>
+      <circle cx="391" cy="90" r="4" fill="#455A64"/>
+      <text x="391" y="115" text-anchor="middle" font-size="7" fill="#C62828" font-weight="bold">M2</text>
+    </g>
+    <g>
+      <rect x="420" y="68" width="42" height="44" rx="3" fill="#FFE0B2" stroke="#E65100" stroke-width="1"/>
+      <circle cx="441" cy="90" r="12" fill="url(#metal)" stroke="#607D8B" stroke-width="1"/>
+      <circle cx="441" cy="90" r="4" fill="#455A64"/>
+      <text x="441" y="115" text-anchor="middle" font-size="7" fill="#E65100" font-weight="bold">M3</text>
+    </g>
+    <g>
+      <rect x="470" y="68" width="42" height="44" rx="3" fill="#C8E6C9" stroke="#2E7D32" stroke-width="1"/>
+      <circle cx="491" cy="90" r="12" fill="url(#metal)" stroke="#607D8B" stroke-width="1"/>
+      <circle cx="491" cy="90" r="4" fill="#455A64"/>
+      <text x="491" y="115" text-anchor="middle" font-size="7" fill="#2E7D32" font-weight="bold">M4</text>
+    </g>
+    <!-- 솔레노이드 2개 -->
+    <rect x="530" y="72" width="22" height="36" rx="3" fill="#0288D1" stroke="#01579B" stroke-width="1"/>
+    <text x="541" y="94" text-anchor="middle" font-size="7" fill="white" font-weight="bold">S1</text>
+    <rect x="558" y="72" width="22" height="36" rx="3" fill="#0288D1" stroke="#01579B" stroke-width="1"/>
+    <text x="569" y="94" text-anchor="middle" font-size="7" fill="white" font-weight="bold">S2</text>
+  </g>
+  <text x="450" y="55" text-anchor="middle" font-size="12" font-weight="bold" fill="#546E7A">펌프 + 에어 분배기</text>
+
+  <!-- ===== 제어기 하우징 (오른쪽) ===== -->
+  <g filter="url(#shadow)">
+    <rect x="720" y="240" width="180" height="160" rx="6" fill="#ECEFF1" stroke="#78909C" stroke-width="2"/>
+    <!-- 통풍구 -->
+    <g opacity="0.3">
+      <line x1="730" y1="245" x2="730" y2="395" stroke="#78909C" stroke-width="1"/>
+      <line x1="736" y1="245" x2="736" y2="395" stroke="#78909C" stroke-width="1"/>
+      <line x1="742" y1="245" x2="742" y2="395" stroke="#78909C" stroke-width="1"/>
+    </g>
+    <!-- 내부 부품 표시 -->
+    <rect x="755" y="255" width="60" height="25" rx="2" fill="#FFF9C4" stroke="#F9A825" stroke-width="0.5"/>
+    <text x="785" y="271" text-anchor="middle" font-size="7" fill="#795548">브레드보드</text>
+    <rect x="820" y="255" width="60" height="25" rx="2" fill="#FFF9C4" stroke="#F9A825" stroke-width="0.5"/>
+    <text x="850" y="271" text-anchor="middle" font-size="7" fill="#795548">브레드보드</text>
+    <rect x="755" y="290" width="28" height="18" rx="1" fill="#4CAF50" stroke="#2E7D32" stroke-width="0.5"/>
+    <text x="769" y="302" text-anchor="middle" font-size="6" fill="white" font-weight="bold">Nano</text>
+    <rect x="788" y="290" width="22" height="18" rx="1" fill="#2196F3" stroke="#1565C0" stroke-width="0.5"/>
+    <text x="799" y="302" text-anchor="middle" font-size="6" fill="white" font-weight="bold">ADS</text>
+    <rect x="815" y="290" width="22" height="18" rx="1" fill="#9C27B0" stroke="#7B1FA2" stroke-width="0.5"/>
+    <text x="826" y="302" text-anchor="middle" font-size="6" fill="white" font-weight="bold">BT</text>
+    <!-- L298N x3 -->
+    <rect x="755" y="318" width="35" height="20" rx="1" fill="#F44336" stroke="#C62828" stroke-width="0.5"/>
+    <text x="772" y="331" text-anchor="middle" font-size="6" fill="white">L298N</text>
+    <rect x="795" y="318" width="35" height="20" rx="1" fill="#F44336" stroke="#C62828" stroke-width="0.5"/>
+    <text x="812" y="331" text-anchor="middle" font-size="6" fill="white">L298N</text>
+    <rect x="835" y="318" width="35" height="20" rx="1" fill="#F44336" stroke="#C62828" stroke-width="0.5"/>
+    <text x="852" y="331" text-anchor="middle" font-size="6" fill="white">L298N</text>
+    <!-- Buck 컨버터 -->
+    <rect x="755" y="345" width="50" height="12" rx="1" fill="#FF9800" stroke="#E65100" stroke-width="0.5"/>
+    <text x="780" y="354" text-anchor="middle" font-size="6" fill="white">5V Buck</text>
+    <rect x="810" y="345" width="60" height="12" rx="1" fill="#FF9800" stroke="#E65100" stroke-width="0.5"/>
+    <text x="840" y="354" text-anchor="middle" font-size="6" fill="white">6V XL4015</text>
+    <!-- DC잭 -->
+    <circle cx="895" cy="300" r="6" fill="#333" stroke="#111" stroke-width="1"/>
+    <text x="895" y="318" text-anchor="middle" font-size="6" fill="#333">DC12V</text>
+    <!-- LED 표시 -->
+    <circle cx="755" y="380" r="3" fill="#4CAF50"/>
+    <text x="765" y="383" font-size="6" fill="#666">PWR</text>
+  </g>
+  <text x="810" y="233" text-anchor="middle" font-size="12" font-weight="bold" fill="#546E7A">제어기</text>
+
+  <!-- ===== 기포기 (왼쪽 하단) ===== -->
+  <g filter="url(#shadow)">
+    <rect x="50" y="440" width="100" height="60" rx="8" fill="#E1F5FE" stroke="#0288D1" stroke-width="1.5"/>
+    <circle cx="100" cy="465" r="15" fill="white" stroke="#0288D1" stroke-width="1"/>
+    <circle cx="100" cy="465" r="8" fill="#B3E5FC"/>
+    <text x="100" y="495" text-anchor="middle" font-size="9" fill="#0277BD">에어펌프</text>
+  </g>
+  <text x="100" y="435" text-anchor="middle" font-size="10" font-weight="bold" fill="#0277BD">기포기</text>
+
+  <!-- ===== 12V 어댑터 (오른쪽 하단) ===== -->
+  <g filter="url(#shadow)">
+    <rect x="830" y="440" width="80" height="45" rx="5" fill="#333" stroke="#111" stroke-width="1"/>
+    <text x="870" y="467" text-anchor="middle" font-size="9" fill="white" font-weight="bold">12V 3A</text>
+    <!-- 전선 -->
+    <path d="M910,462 L940,462 Q950,462 950,450 L950,400 L895,400 L895,306" fill="none" stroke="#333" stroke-width="2"/>
+  </g>
+  <text x="870" y="435" text-anchor="middle" font-size="9" fill="#333">DC 어댑터</text>
+
+  <!-- ===== 호스 연결 ===== -->
+
+  <!-- 수조 → M1 (펌프) -->
+  <path d="M230,320 Q270,320 270,200 Q270,90 320,90" fill="none" stroke="#1565C0" stroke-width="2.5" opacity="0.7"/>
+  <!-- M1 → 수조물 비이커 -->
+  <path d="M341,120 L341,160 Q341,200 370,200 L407,200 L407,260" fill="none" stroke="#1565C0" stroke-width="2.5" opacity="0.7"/>
+
+  <!-- M2 → pH 비이커 -->
+  <path d="M391,120 L391,170 Q391,210 430,210 L494,210 L494,260" fill="none" stroke="#C62828" stroke-width="2" opacity="0.7"/>
+
+  <!-- M3 → KCL 비이커 -->
+  <path d="M441,120 L441,180 Q441,220 500,220 L582,220 L582,260" fill="none" stroke="#E65100" stroke-width="2" opacity="0.7"/>
+
+  <!-- M4 → 위즈탱크 (참조수) -->
+  <path d="M491,120 L491,175 Q491,195 510,195 L625,195 L625,310" fill="none" stroke="#2E7D32" stroke-width="2" opacity="0.7"/>
+
+  <!-- 기포기 → S1 (에어) -->
+  <path d="M150,465 Q200,465 200,200 Q200,80 530,80" fill="none" stroke="#90CAF9" stroke-width="2" stroke-dasharray="5,3"/>
+
+  <!-- S1 → pH 비이커 에어 -->
+  <path d="M541,108 L541,150 Q541,200 494,200 L485,265" fill="none" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <!-- S2 → 수조물 비이커 에어 -->
+  <path d="M569,108 L569,155 Q569,195 450,195 L400,265" fill="none" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="4,2"/>
+
+  <!-- 제어기 → 펌프 (전선) -->
+  <path d="M720,280 Q680,280 680,150 Q680,85 590,85" fill="none" stroke="#455A64" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <!-- 제어기 → 온도센서 -->
+  <path d="M720,350 Q700,350 700,340 L640,340 L632,340" fill="none" stroke="#E65100" stroke-width="1" stroke-dasharray="4,2"/>
+  <!-- 제어기 → pH 프로브 -->
+  <path d="M720,310 Q690,310 690,290 L530,290 L522,290" fill="none" stroke="#607D8B" stroke-width="1" stroke-dasharray="4,2"/>
+
+  <!-- ===== 블루투스 신호 ===== -->
+  <path d="M826,290 Q840,270 855,280" fill="none" stroke="#9C27B0" stroke-width="1" opacity="0.5"/>
+  <path d="M830,285 Q845,265 860,275" fill="none" stroke="#9C27B0" stroke-width="1" opacity="0.3"/>
+  <text x="865" y="270" font-size="7" fill="#9C27B0">BT</text>
+
+  <!-- ===== 범례 ===== -->
+  <rect x="30" y="540" width="350" height="120" rx="6" fill="white" stroke="#CCC" stroke-width="1" opacity="0.9"/>
+  <text x="205" y="562" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">범례</text>
+
+  <line x1="50" y1="580" x2="80" y2="580" stroke="#1565C0" stroke-width="2.5" opacity="0.7"/>
+  <text x="88" y="584" font-size="9" fill="#555">M1: 수조 ↔ 수조물 비이커 (샘플링/반환)</text>
+
+  <line x1="50" y1="598" x2="80" y2="598" stroke="#C62828" stroke-width="2" opacity="0.7"/>
+  <text x="88" y="602" font-size="9" fill="#555">M2: 수조물 ↔ pH 비이커 (측정 이송)</text>
+
+  <line x1="50" y1="616" x2="80" y2="616" stroke="#E65100" stroke-width="2" opacity="0.7"/>
+  <text x="88" y="620" font-size="9" fill="#555">M3: KCL ↔ pH 비이커 (프로브 보관)</text>
+
+  <line x1="50" y1="634" x2="80" y2="634" stroke="#2E7D32" stroke-width="2" opacity="0.7"/>
+  <text x="88" y="638" font-size="9" fill="#555">M4: 위즈 탱크(참조수) ↔ pH 비이커</text>
+
+  <line x1="50" y1="652" x2="80" y2="652" stroke="#90CAF9" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="88" y="656" font-size="9" fill="#555">에어 호스 (SOL1/SOL2 교대 공급)</text>
+
+  <!-- 측정 공식 -->
+  <rect x="430" y="540" width="350" height="80" rx="6" fill="#263238" opacity="0.95"/>
+  <text x="605" y="565" text-anchor="middle" font-size="12" fill="#80CBC4" font-weight="bold" font-family="monospace">KH_tank = KH_ref × 10^(-ΔpH)</text>
+  <text x="605" y="588" text-anchor="middle" font-size="10" fill="#B2DFDB" font-family="monospace">ΔpH = pH_ref − pH_tank</text>
+  <text x="605" y="610" text-anchor="middle" font-size="9" fill="#78909C">탈기 후 CO₂ 평형 → pH 차이 = 순수 알칼리니티 차이</text>
+</svg>

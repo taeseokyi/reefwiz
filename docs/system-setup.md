@@ -1,5 +1,9 @@
 # AquaWiz 자동화 환경 구성
 
+## 셋팅 구성
+
+![셋팅 구성](images/setup-demo.svg)
+
 ## 시스템 구성도
 
 ![시스템 구성도](images/system-setup.svg)

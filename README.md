@@ -73,6 +73,12 @@ Star Ground Point 방식을 사용하여 디지털 접지(DGND)와 아날로그 
 
 ## 자동화 환경 구성
 
+### 셋팅 구성
+
+![셋팅 구성](docs/images/setup-demo.svg)
+
+### 시스템 구성도
+
 ![시스템 구성도](docs/images/system-setup.svg)
 
 자세한 호스 연결, 시퀀스 흐름은 [자동화 환경 구성 문서](docs/system-setup.md)를 참조하세요.
