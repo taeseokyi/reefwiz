@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 750" font-family="'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="12">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#333"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2196F3"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#e53935"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#43A047"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#FB8C00"/>
+    </marker>
+    <marker id="arrow-air" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#90CAF9"/>
+    </marker>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#B3E5FC" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#0288D1" stop-opacity="0.25"/>
+    </linearGradient>
+    <linearGradient id="kcl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F9A825" stop-opacity="0.3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Title -->
+  <text x="500" y="30" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a1a1a">AquaWiz 자동화 환경 구성도</text>
+
+  <!-- Reef Tank (aquarium) -->
+  <rect x="30" y="200" width="140" height="180" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+  <rect x="40" y="280" width="120" height="90" rx="4" fill="url(#water)"/>
+  <text x="100" y="225" text-anchor="middle" font-size="14" font-weight="bold" fill="#1565C0">수조</text>
+  <text x="100" y="245" text-anchor="middle" font-size="11" fill="#555">(리프 탱크)</text>
+  <!-- coral decorations -->
+  <circle cx="65" cy="355" r="8" fill="#FF8A65" opacity="0.6"/>
+  <circle cx="90" cy="360" r="6" fill="#AED581" opacity="0.6"/>
+  <circle cx="120" cy="355" r="10" fill="#CE93D8" opacity="0.5"/>
+
+  <!-- Wiz Tank (reference water container) -->
+  <rect x="310" y="180" width="460" height="380" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2.5" stroke-dasharray="none"/>
+  <text x="540" y="205" text-anchor="middle" font-size="16" font-weight="bold" fill="#2E7D32">위즈 탱크 (참조 해수 3L)</text>
+
+  <!-- Reference water fill -->
+  <rect x="320" y="340" width="440" height="210" rx="8" fill="url(#water)" opacity="0.5"/>
+
+  <!-- Temperature sensor -->
+  <rect x="700" y="230" width="55" height="55" rx="6" fill="#FFF3E0" stroke="#E65100" stroke-width="1.5"/>
+  <text x="727" y="253" text-anchor="middle" font-size="10" fill="#E65100">DS18B20</text>
+  <text x="727" y="268" text-anchor="middle" font-size="9" fill="#E65100">온도센서</text>
+  <line x1="727" y1="285" x2="727" y2="350" stroke="#E65100" stroke-width="2" stroke-dasharray="4,3"/>
+  <circle cx="727" cy="355" r="4" fill="#E65100"/>
+
+  <!-- Beaker 1: 수조물 비이커 -->
+  <rect x="340" y="280" width="110" height="150" rx="6" fill="white" stroke="#1976D2" stroke-width="1.5"/>
+  <rect x="345" y="350" width="100" height="75" rx="3" fill="url(#water)"/>
+  <text x="395" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#1976D2">수조물</text>
+  <text x="395" y="320" text-anchor="middle" font-size="12" font-weight="bold" fill="#1976D2">비이커</text>
+  <text x="395" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
+
+  <!-- Air2 bubble in 수조물 비이커 -->
+  <circle cx="370" cy="390" r="3" fill="#90CAF9" opacity="0.7"/>
+  <circle cx="380" cy="380" r="2.5" fill="#90CAF9" opacity="0.6"/>
+  <circle cx="375" cy="370" r="2" fill="#90CAF9" opacity="0.5"/>
+  <text x="395" y="425" text-anchor="middle" font-size="9" fill="#1976D2" font-weight="bold">Air2</text>
+
+  <!-- Beaker 2: pH 측정 비이커 -->
+  <rect x="490" y="280" width="110" height="150" rx="6" fill="white" stroke="#D32F2F" stroke-width="1.5"/>
+  <rect x="495" y="350" width="100" height="75" rx="3" fill="url(#water)"/>
+  <text x="545" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#D32F2F">pH 측정</text>
+  <text x="545" y="320" text-anchor="middle" font-size="12" font-weight="bold" fill="#D32F2F">비이커</text>
+  <text x="545" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
+
+  <!-- pH probe in pH beaker -->
+  <rect x="535" y="295" width="8" height="80" rx="2" fill="#78909C"/>
+  <rect x="533" y="370" width="12" height="15" rx="3" fill="#546E7A"/>
+  <text x="560" y="365" font-size="8" fill="#546E7A">pH</text>
+
+  <!-- Air1 bubble in pH 비이커 -->
+  <circle cx="515" cy="395" r="3" fill="#90CAF9" opacity="0.7"/>
+  <circle cx="520" cy="383" r="2.5" fill="#90CAF9" opacity="0.6"/>
+  <circle cx="512" cy="373" r="2" fill="#90CAF9" opacity="0.5"/>
+  <text x="510" y="425" text-anchor="middle" font-size="9" fill="#1976D2" font-weight="bold">Air1</text>
+
+  <!-- Beaker 3: KCL 용액 비이커 -->
+  <rect x="640" y="280" width="110" height="150" rx="6" fill="white" stroke="#F9A825" stroke-width="1.5"/>
+  <rect x="645" y="350" width="100" height="75" rx="3" fill="url(#kcl)"/>
+  <text x="695" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">KCL 용액</text>
+  <text x="695" y="320" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">비이커</text>
+  <text x="695" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
+
+  <!-- Controller -->
+  <rect x="810" y="60" width="170" height="140" rx="10" fill="#ECEFF1" stroke="#455A64" stroke-width="2"/>
+  <text x="895" y="90" text-anchor="middle" font-size="14" font-weight="bold" fill="#37474F">제어기 본체</text>
+  <text x="895" y="110" text-anchor="middle" font-size="10" fill="#666">Arduino Nano</text>
+  <text x="895" y="125" text-anchor="middle" font-size="10" fill="#666">ADS1115 + SEN0161</text>
+  <text x="895" y="140" text-anchor="middle" font-size="10" fill="#666">HC-06 BT</text>
+  <text x="895" y="155" text-anchor="middle" font-size="10" fill="#666">L298N x 3</text>
+  <text x="895" y="170" text-anchor="middle" font-size="10" fill="#666">12V DC</text>
+
+  <!-- 4-channel pump unit -->
+  <rect x="810" y="240" width="170" height="120" rx="8" fill="#F3E5F5" stroke="#7B1FA2" stroke-width="1.5"/>
+  <text x="895" y="265" text-anchor="middle" font-size="13" font-weight="bold" fill="#7B1FA2">4구 연동 펌프</text>
+  <text x="845" y="290" font-size="10" fill="#7B1FA2">M1: 수조 → 수조물</text>
+  <text x="845" y="308" font-size="10" fill="#7B1FA2">M2: 수조물 → pH</text>
+  <text x="845" y="326" font-size="10" fill="#7B1FA2">M3: KCL → pH</text>
+  <text x="845" y="344" font-size="10" fill="#7B1FA2">M4: 참조수 → pH</text>
+
+  <!-- Air pump unit -->
+  <rect x="810" y="400" width="170" height="90" rx="8" fill="#E1F5FE" stroke="#0277BD" stroke-width="1.5"/>
+  <text x="895" y="425" text-anchor="middle" font-size="13" font-weight="bold" fill="#0277BD">기포기</text>
+  <text x="895" y="445" text-anchor="middle" font-size="10" fill="#0277BD">2구 에어 분배</text>
+  <text x="850" y="465" font-size="10" fill="#0277BD">SOL1 → pH 비이커</text>
+  <text x="850" y="480" font-size="10" fill="#0277BD">SOL2 → 수조물 비이커</text>
+
+  <!-- === PUMP LINES === -->
+
+  <!-- Pump 1: 수조 → 수조물 비이커 (blue) -->
+  <path d="M170,310 L260,310 Q280,310 280,330 L280,370 L340,370"
+        fill="none" stroke="#2196F3" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <rect x="215" y="298" width="55" height="18" rx="4" fill="#2196F3"/>
+  <text x="242" y="311" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프1</text>
+
+  <!-- Pump 2: 수조물 비이커 → pH 비이커 (red) -->
+  <path d="M450,390 L490,390"
+        fill="none" stroke="#e53935" stroke-width="2.5" marker-end="url(#arrow-red)"/>
+  <rect x="453" y="378" width="55" height="18" rx="4" fill="#e53935"/>
+  <text x="480" y="391" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프2</text>
+
+  <!-- Pump 3: KCL 비이커 → pH 비이커 (orange) -->
+  <path d="M640,370 L600,370"
+        fill="none" stroke="#FB8C00" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <rect x="605" y="358" width="55" height="18" rx="4" fill="#FB8C00"/>
+  <text x="632" y="371" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프3</text>
+
+  <!-- Pump 4: 위즈탱크(참조수) → pH 비이커 (green) -->
+  <path d="M545,540 L545,430"
+        fill="none" stroke="#43A047" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <rect x="518" y="470" width="55" height="18" rx="4" fill="#43A047"/>
+  <text x="545" y="483" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프4</text>
+  <text x="545" y="555" text-anchor="middle" font-size="10" fill="#2E7D32">(참조 해수)</text>
+
+  <!-- === AIR LINES === -->
+
+  <!-- Air line to pH beaker -->
+  <path d="M810,445 L770,445 Q755,445 755,435 L755,420 Q755,410 745,410 L515,410 L515,425"
+        fill="none" stroke="#90CAF9" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow-air)"/>
+
+  <!-- Air line to 수조물 beaker -->
+  <path d="M810,465 L780,465 Q765,465 765,455 L765,440 Q765,435 755,435 L395,435 L395,425"
+        fill="none" stroke="#90CAF9" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow-air)"/>
+
+  <!-- Controller to Pump connection -->
+  <line x1="895" y1="200" x2="895" y2="240" stroke="#455A64" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Controller to Air pump connection -->
+  <line x1="895" y1="360" x2="895" y2="400" stroke="#455A64" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Controller to temp sensor -->
+  <path d="M810,150 L727,150 L727,230" fill="none" stroke="#E65100" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Controller to pH probe -->
+  <path d="M810,120 L790,120 L790,295 L560,295 L545,295" fill="none" stroke="#78909C" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <!-- Legend -->
+  <rect x="30" y="580" width="940" height="150" rx="8" fill="#FAFAFA" stroke="#CCC" stroke-width="1"/>
+  <text x="500" y="605" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">자동 측정 시퀀스</text>
+
+  <text x="55" y="635" font-size="11" fill="#333" font-weight="bold">1</text>
+  <rect x="70" y="622" width="10" height="16" rx="2" fill="#2196F3"/>
+  <text x="90" y="635" font-size="11" fill="#333">펌프1: 수조 → 수조물 비이커 (수조수 샘플링)</text>
+
+  <text x="55" y="658" font-size="11" fill="#333" font-weight="bold">2</text>
+  <rect x="70" y="645" width="10" height="16" rx="2" fill="#90CAF9"/>
+  <text x="90" y="658" font-size="11" fill="#333">에어 교대 탈기 30분 (Air1/Air2 5초 주기 교대)</text>
+
+  <text x="55" y="681" font-size="11" fill="#333" font-weight="bold">3</text>
+  <rect x="70" y="668" width="10" height="16" rx="2" fill="#43A047"/>
+  <text x="90" y="681" font-size="11" fill="#333">펌프4: 참조수 → pH 비이커 → ref (참조 pH 측정)</text>
+
+  <text x="530" y="635" font-size="11" fill="#333" font-weight="bold">4</text>
+  <rect x="545" y="622" width="10" height="16" rx="2" fill="#FB8C00"/>
+  <text x="565" y="635" font-size="11" fill="#333">펌프3: KCL → pH 비이커 (프로브 세정)</text>
+
+  <text x="530" y="658" font-size="11" fill="#333" font-weight="bold">5</text>
+  <rect x="545" y="645" width="10" height="16" rx="2" fill="#e53935"/>
+  <text x="565" y="658" font-size="11" fill="#333">펌프2: 수조물 → pH 비이커 → tank (수조 pH 측정)</text>
+
+  <text x="530" y="681" font-size="11" fill="#333" font-weight="bold">6</text>
+  <rect x="545" y="668" width="10" height="16" rx="2" fill="#333"/>
+  <text x="565" y="681" font-size="11" fill="#333">calckh: dKH 계산 → KH_tank = KH_ref x 10^(-dPH)</text>
+
+  <text x="500" y="718" text-anchor="middle" font-size="10" fill="#999">seq:settime:14|m1f:30|air:1800:5|m4f:10|ref|m3f:5|m2f:10|tank|calckh|m3f:5</text>
+</svg>

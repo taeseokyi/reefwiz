@@ -58,6 +58,12 @@ A5        ↔ ADS1115 SCL (I2C)
 
 Star Ground Point 방식을 사용하여 디지털 접지(DGND)와 아날로그 접지(AGND)를 분리하고, 한 점에서 결합합니다.
 
+## 자동화 환경 구성
+
+![시스템 구성도](docs/images/system-setup.svg)
+
+자세한 배관 연결, 시퀀스 흐름은 [자동화 환경 구성 문서](docs/system-setup.md)를 참조하세요.
+
 ## 프로젝트 구조
 
 ```
@@ -79,7 +85,9 @@ reefkeeper/
 │       └── ...
 └── docs/
     ├── user-manual.md                   # 사용 설명서
+    ├── system-setup.md                  # 자동화 환경 구성
     └── images/
+        ├── system-setup.svg             # 시스템 구성도
         └── arduino-nano-pinout.png      # 나노 핀 배열 참조
 ```
 
