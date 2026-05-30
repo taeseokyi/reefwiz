@@ -88,6 +88,7 @@ reefkeeper/
     ├── system-setup.md                  # 자동화 환경 구성
     └── images/
         ├── system-setup.svg             # 시스템 구성도
+        ├── piping-diagram.svg           # 배관 연결도
         └── arduino-nano-pinout.png      # 나노 핀 배열 참조
 ```
 

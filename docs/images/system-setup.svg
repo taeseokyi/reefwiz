@@ -1,9 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" font-family="'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="12">
   <defs>
-    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6 Z" fill="#333"/>
-    </marker>
-    <marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+<marker id="arrow-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 Z" fill="#2196F3"/>
     </marker>
     <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
