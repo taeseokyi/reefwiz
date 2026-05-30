@@ -86,10 +86,10 @@
   <circle cx="512" cy="373" r="2" fill="#90CAF9" opacity="0.5"/>
   <text x="510" y="425" text-anchor="middle" font-size="9" fill="#1976D2" font-weight="bold">Air1</text>
 
-  <!-- Beaker 3: KCL 용액 비이커 -->
+  <!-- Beaker 3: KCL 3% 비이커 -->
   <rect x="640" y="280" width="110" height="150" rx="6" fill="white" stroke="#F9A825" stroke-width="1.5"/>
   <rect x="645" y="350" width="100" height="75" rx="3" fill="url(#kcl)"/>
-  <text x="695" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">KCL 용액</text>
+  <text x="695" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">KCL 3%</text>
   <text x="695" y="320" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">비이커</text>
   <text x="695" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
 
@@ -107,7 +107,7 @@
   <text x="895" y="265" text-anchor="middle" font-size="13" font-weight="bold" fill="#7B1FA2">4구 연동 펌프</text>
   <text x="845" y="290" font-size="10" fill="#7B1FA2">M1: 수조 → 수조물</text>
   <text x="845" y="308" font-size="10" fill="#7B1FA2">M2: 수조물 → pH</text>
-  <text x="845" y="326" font-size="10" fill="#7B1FA2">M3: KCL → pH</text>
+  <text x="845" y="326" font-size="10" fill="#7B1FA2">M3: KCL 3% ↔ pH</text>
   <text x="845" y="344" font-size="10" fill="#7B1FA2">M4: 참조수 → pH</text>
 
   <!-- Air pump unit -->
@@ -184,7 +184,7 @@
 
   <text x="530" y="635" font-size="11" fill="#333" font-weight="bold">4</text>
   <rect x="545" y="622" width="10" height="16" rx="2" fill="#FB8C00"/>
-  <text x="565" y="635" font-size="11" fill="#333">펌프3: KCL → pH 비이커 (프로브 세정)</text>
+  <text x="565" y="635" font-size="11" fill="#333">펌프3: KCL 저장수 배출/공급 (프로브 보관)</text>
 
   <text x="530" y="658" font-size="11" fill="#333" font-weight="bold">5</text>
   <rect x="545" y="645" width="10" height="16" rx="2" fill="#e53935"/>
@@ -194,5 +194,5 @@
   <rect x="545" y="668" width="10" height="16" rx="2" fill="#333"/>
   <text x="565" y="681" font-size="11" fill="#333">calckh: dKH 계산 → KH_tank = KH_ref x 10^(-dPH)</text>
 
-  <text x="500" y="718" text-anchor="middle" font-size="10" fill="#999">seq:settime:14|m1f:30|air:1800:5|m4f:10|ref|m3f:5|m2f:10|tank|calckh|m3f:5</text>
+  <text x="500" y="718" text-anchor="middle" font-size="10" fill="#999">seq:settime:14|m1f:30|air:1800:5|m4f:10|ref|m3b:5|m2f:10|tank|calckh|m3f:5</text>
 </svg>
