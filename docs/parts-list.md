@@ -21,7 +21,7 @@
 
 | # | 사진 | 부품명 | 수량 | 금액 |
 |---|------|--------|------|------|
-| 10 | ![](images/parts/ali-pump.jpg) | <a href="https://www.aliexpress.com/item/1005001888639071.html" target="_blank">연동 펌프 NKP-DC-S06B (12V, yellow)</a> | 4 | ₩21,680 |
+| 10 | ![](images/parts/ali-pump.png) | <a href="https://www.aliexpress.com/item/1005001888639071.html" target="_blank">연동 펌프 NKP-DC-S06B (12V, yellow)</a> | 4 | ₩21,680 |
 | | | **AliExpress 소계** | | **₩21,680** |
 
 > 주문일: 2026-05-24 / 결제수단: KakaoPay
