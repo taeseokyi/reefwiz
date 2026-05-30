@@ -12,6 +12,14 @@
 
 구매 링크 포함 상세 목록은 [준비물 목록](parts-list.md)을 참조하세요.
 
+## 하우징 (3D 프린팅)
+
+| 제어기 하우징 | 펌프 + 에어 분배기 하우징 |
+|:---:|:---:|
+| ![제어기](../hardware/housing/controller-box.png) | ![펌프+분배기](../hardware/housing/pump-air-box.png) |
+| 180 x 173 x 45mm | 296 x 53 x 75mm |
+| <a href="../hardware/housing/controller-box.scad" target="_blank">OpenSCAD 도면</a> | <a href="../hardware/housing/pump-air-box.scad" target="_blank">OpenSCAD 도면</a> |
+
 ## 구성 요소
 
 ### 제어기 본체

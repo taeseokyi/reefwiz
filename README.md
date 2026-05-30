@@ -27,6 +27,15 @@ DeltaPH = pH_ref - pH_tank
 
 구매 링크 포함 상세 준비물 목록은 [준비물 목록](docs/parts-list.md)을 참조하세요.
 
+### 하우징 (3D 프린팅)
+
+| 하우징 | 외부 치수 | 미리보기 |
+|--------|----------|---------|
+| [제어기](hardware/housing/controller-box.scad) | 180 x 173 x 45mm | ![](hardware/housing/controller-box.png) |
+| [펌프+분배기](hardware/housing/pump-air-box.scad) | 296 x 53 x 75mm | ![](hardware/housing/pump-air-box.png) |
+
+OpenSCAD 파라메트릭 설계 — 부품 실측 후 상단 파라미터만 수정하면 치수 자동 조정됩니다.
+
 ### 회로도
 
 Fritzing 브레드보드 도면은 `hardware/fritzing/` 디렉토리에 있습니다.
@@ -78,13 +87,13 @@ reefkeeper/
 │   ├── fritzing/
 │   │   ├── 고정밀 ph 측정기-bread.fzz   # Fritzing 소스
 │   │   └── 고정밀 ph 측정기-bread_bb.pdf # 브레드보드 도면 PDF
-│   └── parts/                           # 커스텀 Fritzing 부품
-│       ├── DFR0553_ADS1115_ADC.fzpz
-│       ├── NKP_DC_B06B_PeristalticPump.fzpz
-│       ├── SEN0161V2_pH_Probe.fzpz
-│       ├── SEN0161V2_pH_SignalBoard.fzpz
-│       ├── SZHGNP114_SolenoidValve.fzpz
-│       └── ...
+│   ├── parts/                           # 커스텀 Fritzing 부품
+│   │   └── ...
+│   └── housing/                         # 3D 프린팅 하우징
+│       ├── controller-box.scad          # 제어기 하우징 (OpenSCAD)
+│       ├── controller-box.png           # 미리보기
+│       ├── pump-air-box.scad            # 펌프+분배기 하우징
+│       └── pump-air-box.png             # 미리보기
 └── docs/
     ├── user-manual.md                   # 사용 설명서
     ├── system-setup.md                  # 자동화 환경 구성
