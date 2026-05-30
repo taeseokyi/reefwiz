@@ -175,9 +175,10 @@ void printKHHist() {
         int idx = ((khHistHead - 1 - i) % KH_HIST_MAX + KH_HIST_MAX) % KH_HIST_MAX;
         KHRecord &r = khHist[idx];
         if (!r.valid) continue;
+        char dkhStr[8];
+        dtostrf(r.dkh, 5, 2, dkhStr);
         char buf[20];
-        snprintf(buf, sizeof(buf), "%2d  %s  %5.2f",
-                 i+1, r.timestamp, r.dkh);
+        snprintf(buf, sizeof(buf), "%2d  %s  %s", i+1, r.timestamp, dkhStr);
         BTPRINTLN(buf);
     }
 }
