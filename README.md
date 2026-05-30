@@ -1,21 +1,38 @@
 # AquaWiz - 고정밀 pH/dKH 자동 측정 시스템
 
-산호 수조(리프 탱크)를 위한 Arduino Nano 기반 자동 경도(dKH) 측정기입니다. 탄산염 화학법을 이용하여 참조 해수와 수조수의 pH 차이로부터 dKH를 산출합니다.
-
-## 측정 원리
-
-탈기 후 두 샘플의 CO2 농도가 동일해지면, pH 차이는 순수하게 알칼리니티(dKH) 차이만을 반영합니다.
-
-```
-KH_tank = KH_ref x 10^(-DeltaPH)
-DeltaPH = pH_ref - pH_tank
-```
-
-## 셋팅 구성
+산호 수조(리프 탱크)를 위한 Arduino Nano 기반 **자동 경도(dKH) 측정기**입니다.
+탄산염 화학법을 이용하여 참조 해수와 수조수의 pH 차이로부터 dKH를 자동 산출합니다.
 
 ![셋팅 구성](docs/images/setup-demo.svg)
 
-자세한 구성 요소, 호스 연결, 측정 시퀀스는 [자동화 환경 구성 문서](docs/system-setup.md)를 참조하세요.
+### 주요 특징
+
+- **원버튼 자동 측정** — 샘플링 → 폭기(CO2 평형) → pH 측정 → dKH 계산 → 정리까지 13단계 자동 시퀀스
+- **탄산염 화학법** — `KH_tank = KH_ref × 10^(-ΔpH)`, 참조수와 동시 탈기로 CO2 변수 제거
+- **16비트 고정밀 ADC** — ADS1115 + 64회 오버샘플링으로 pH 0.001 단위 분해능
+- **Nernst 온도 보상** — DS18B20 실시간 수온 측정, pH 전극 온도 보정
+- **블루투스 제어** — HC-06으로 스마트폰에서 원격 제어/모니터링
+- **밀폐 참조수** — 락앤락 김치통으로 증발/오염 차단, 경도 장기 안정 유지
+- **3D 프린팅 하우징** — OpenSCAD 파라메트릭 설계, 부품 실측 후 즉시 출력
+
+## 한눈에 보기
+
+| 시스템 구성도 | 호스 연결도 |
+|:---:|:---:|
+| [![구성도](docs/images/system-setup.svg)](docs/system-setup.md) | [![호스](docs/images/piping-diagram.svg)](docs/system-setup.md#호스-연결) |
+
+| 회로도 (Fritzing) | 하우징 (3D 프린팅) |
+|:---:|:---:|
+| [![회로도](hardware/fritzing/고정밀%20ph%20측정기-bread_bb.png)](#회로도) | ![제어기](hardware/housing/controller-box.png) ![펌프](hardware/housing/pump-air-box.png) |
+
+## 측정 원리
+
+```
+KH_tank = KH_ref × 10^(-ΔpH)
+ΔpH = pH_ref − pH_tank
+```
+
+탈기 후 두 샘플의 CO2 농도가 동일해지면, pH 차이는 순수하게 알칼리니티(dKH) 차이만을 반영합니다.
 
 ## 하드웨어
 
@@ -32,7 +49,7 @@ DeltaPH = pH_ref - pH_tank
 | 전원 | 12V DC + Buck Converter (5V, 6V) | 전원 공급 |
 
 - 구매 링크 포함 상세 목록: [준비물 목록](docs/parts-list.md)
-- 3D 프린팅 하우징: [자동화 환경 구성 문서](docs/system-setup.md#하우징-3d-프린팅)
+- 3D 프린팅 하우징 / 구성 요소 상세: [자동화 환경 구성](docs/system-setup.md)
 
 ### 회로도
 
@@ -43,35 +60,20 @@ Fritzing 소스: <a href="hardware/fritzing/고정밀%20ph%20측정기-bread.fzz
 **핀 배치 요약:**
 
 ```
-Arduino Nano 핀 할당 (총 15핀 사용)
-
-D0  (RX)  ← HC-06 TX (블루투스 수신)
-D1  (TX)  → HC-06 RX (전압분배기 R4=10k, R5=20k)
-D4~D7     → L298N1 IN1~IN4 (펌프 모터 1,2)
-D8~D11    → L298N2 IN1~IN4 (펌프 모터 3,4)
-D12       → L298N3 IN2 (참조 에어 솔레노이드)
-D13       → L298N3 IN4 (수조 에어 솔레노이드)
-A0  (D14) ← DS18B20 DQ (풀업 R2=4.7k)
-A4        ↔ ADS1115 SDA (I2C)
-A5        ↔ ADS1115 SCL (I2C)
+D0  (RX)  ← HC-06 TX        D1  (TX)  → HC-06 RX (전압분배기)
+D4~D7     → L298N1 IN1~IN4  D8~D11    → L298N2 IN1~IN4
+D12       → SOL1 (참조 에어)  D13       → SOL2 (수조 에어)
+A0  (D14) ← DS18B20 DQ      A4/A5     ↔ ADS1115 I2C
 ```
 
-### 전원 계통
+### 전원 / 접지
 
 ```
-12V DC Jack
-  ├── L298N1, L298N2, L298N3 (모터/솔레노이드 전원)
-  ├── Buck Converter 12V→5V (Arduino, ADS1115, HC-06)
-  └── Buck Converter 12V→6V (도징 펌프)
+12V DC → L298N x3 (모터/솔레노이드) + Buck 5V (MCU) + Buck 6V (펌프)
+접지: Star Ground Point (DGND/AGND 분리 후 한 점 결합)
 ```
-
-### 접지 설계
-
-Star Ground Point 방식을 사용하여 디지털 접지(DGND)와 아날로그 접지(AGND)를 분리하고, 한 점에서 결합합니다.
 
 ## 빌드 및 업로드
-
-### 필수 라이브러리 (Arduino Library Manager)
 
 | 라이브러리 | 제작자 |
 |------------|--------|
@@ -80,12 +82,9 @@ Star Ground Point 방식을 사용하여 디지털 접지(DGND)와 아날로그 
 | OneWire | Paul Stoffregen |
 | DallasTemperature | Miles Burton |
 
-### 업로드 절차
-
 1. Arduino IDE에서 `firmware/aquawiz_ph_meter_final/aquawiz_ph_meter_final.ino` 열기
 2. 보드: **Arduino Nano**, 프로세서: **ATmega328P** 선택
-3. **HC-06을 D0/D1에서 분리** (분리하지 않으면 업로드 실패)
-4. 업로드 완료 후 HC-06 재연결
+3. **HC-06을 D0/D1에서 분리** 후 업로드 → 완료 후 재연결
 
 ## 사용 방법
 
@@ -93,19 +92,17 @@ Star Ground Point 방식을 사용하여 디지털 접지(DGND)와 아날로그 
 
 ```
 1. pH 2점 보정:   enterph → calph (pH7) → exitph → enterph → calph (pH4) → exitph
-2. 온도 오프셋:   settemp:-0.3    (DS18B20과 표준 온도계 차이)
-3. 참조 dKH:      setref:8.5      (참조 해수의 실측 dKH)
+2. 온도 오프셋:   settemp:-0.3
+3. 참조 dKH:      setref:8.5
 ```
 
-### 자동 시퀀스
-
-준비(샘플링) → 폭기(CO2 평형) → 측정 → 정리(반환)를 한 번에 실행:
+### 자동 시퀀스 (원버튼 측정)
 
 ```
 seq:settime:14|m3b:5|m1f:30|m4f:10|air:1800:5|ref|m4b:10|m2f:10|tank|calckh|m2b:10|m1b:30|m3f:5
 ```
 
-각 단계의 상세 설명은 [자동화 환경 구성 문서](docs/system-setup.md#자동-측정-시퀀스)를 참조하세요.
+각 단계의 상세 설명은 [자동화 환경 구성](docs/system-setup.md#자동-측정-시퀀스)을 참조하세요.
 
 ### 주요 명령어
 
@@ -120,24 +117,13 @@ seq:settime:14|m3b:5|m1f:30|m4f:10|air:1800:5|ref|m4b:10|m2f:10|tank|calckh|m2b:
 
 전체 명령어 및 상세 설명은 [사용 설명서](docs/user-manual.md)를 참조하세요.
 
-## 프로젝트 구조
+## 문서
 
-```
-reefkeeper/
-├── README.md                            # 프로젝트 개요
-├── firmware/
-│   └── aquawiz_ph_meter_final/
-│       └── aquawiz_ph_meter_final.ino   # Arduino 펌웨어
-├── hardware/
-│   ├── fritzing/                        # 회로도
-│   ├── parts/                           # 커스텀 Fritzing 부품
-│   └── housing/                         # 3D 프린팅 하우징 (OpenSCAD)
-└── docs/
-    ├── system-setup.md                  # 자동화 환경 구성 (조립/운용 가이드)
-    ├── user-manual.md                   # 사용 설명서 (전체 명령어)
-    ├── parts-list.md                    # 준비물 목록 (구매 링크)
-    └── images/                          # 다이어그램
-```
+| 문서 | 설명 |
+|------|------|
+| [자동화 환경 구성](docs/system-setup.md) | 구성 요소, 호스 연결, 측정 시퀀스, 하우징 |
+| [사용 설명서](docs/user-manual.md) | 전체 명령어, 보정, 오류 메시지, 팁 |
+| [준비물 목록](docs/parts-list.md) | 부품 사진, 구매 링크, 금액 |
 
 ## 산호 수조 권장 dKH 범위
 
