@@ -11,7 +11,13 @@ KH_tank = KH_ref x 10^(-DeltaPH)
 DeltaPH = pH_ref - pH_tank
 ```
 
-## 하드웨어 구성
+## 셋팅 구성
+
+![셋팅 구성](docs/images/setup-demo.svg)
+
+자세한 구성 요소, 호스 연결, 측정 시퀀스는 [자동화 환경 구성 문서](docs/system-setup.md)를 참조하세요.
+
+## 하드웨어
 
 | 부품 | 모델 | 역할 |
 |------|------|------|
@@ -25,16 +31,8 @@ DeltaPH = pH_ref - pH_tank
 | 솔레노이드 밸브 | x 2 | 참조/수조 에어 교대 공급 |
 | 전원 | 12V DC + Buck Converter (5V, 6V) | 전원 공급 |
 
-구매 링크 포함 상세 준비물 목록은 [준비물 목록](docs/parts-list.md)을 참조하세요.
-
-### 하우징 (3D 프린팅)
-
-| 하우징 | 외부 치수 | 미리보기 |
-|--------|----------|---------|
-| [제어기](hardware/housing/controller-box.scad) | 180 x 173 x 45mm | ![](hardware/housing/controller-box.png) |
-| [펌프+분배기](hardware/housing/pump-air-box.scad) | 296 x 53 x 75mm | ![](hardware/housing/pump-air-box.png) |
-
-OpenSCAD 파라메트릭 설계 — 부품 실측 후 상단 파라미터만 수정하면 치수 자동 조정됩니다.
+- 구매 링크 포함 상세 목록: [준비물 목록](docs/parts-list.md)
+- 3D 프린팅 하우징: [자동화 환경 구성 문서](docs/system-setup.md#하우징-3d-프린팅)
 
 ### 회로도
 
@@ -71,47 +69,6 @@ A5        ↔ ADS1115 SCL (I2C)
 
 Star Ground Point 방식을 사용하여 디지털 접지(DGND)와 아날로그 접지(AGND)를 분리하고, 한 점에서 결합합니다.
 
-## 자동화 환경 구성
-
-### 셋팅 구성
-
-![셋팅 구성](docs/images/setup-demo.svg)
-
-### 시스템 구성도
-
-![시스템 구성도](docs/images/system-setup.svg)
-
-자세한 호스 연결, 시퀀스 흐름은 [자동화 환경 구성 문서](docs/system-setup.md)를 참조하세요.
-
-## 프로젝트 구조
-
-```
-reefkeeper/
-├── README.md
-├── firmware/
-│   └── aquawiz_ph_meter_final/
-│       └── aquawiz_ph_meter_final.ino   # Arduino 펌웨어
-├── hardware/
-│   ├── fritzing/
-│   │   ├── 고정밀 ph 측정기-bread.fzz   # Fritzing 소스
-│   │   └── 고정밀 ph 측정기-bread_bb.pdf # 브레드보드 도면 PDF
-│   ├── parts/                           # 커스텀 Fritzing 부품
-│   │   └── ...
-│   └── housing/                         # 3D 프린팅 하우징
-│       ├── controller-box.scad          # 제어기 하우징 (OpenSCAD)
-│       ├── controller-box.png           # 미리보기
-│       ├── pump-air-box.scad            # 펌프+분배기 하우징
-│       └── pump-air-box.png             # 미리보기
-└── docs/
-    ├── user-manual.md                   # 사용 설명서
-    ├── system-setup.md                  # 자동화 환경 구성
-    ├── parts-list.md                    # 준비물 목록 (구매 링크)
-    └── images/
-        ├── system-setup.svg             # 시스템 구성도
-        ├── piping-diagram.svg           # 호스 연결도
-        └── arduino-nano-pinout.png      # 나노 핀 배열 참조
-```
-
 ## 빌드 및 업로드
 
 ### 필수 라이브러리 (Arduino Library Manager)
@@ -140,15 +97,6 @@ reefkeeper/
 3. 참조 dKH:      setref:8.5      (참조 해수의 실측 dKH)
 ```
 
-### 측정
-
-```
-1. settime:14        (현재 시 설정)
-2. ref               (참조수 pH 측정, ~8초)
-3. tank              (수조수 pH 측정, ~8초)
-4. calckh            (dKH 계산 + 이력 저장)
-```
-
 ### 자동 시퀀스
 
 준비(샘플링) → 폭기(CO2 평형) → 측정 → 정리(반환)를 한 번에 실행:
@@ -157,7 +105,7 @@ reefkeeper/
 seq:settime:14|m3b:5|m1f:30|m4f:10|air:1800:5|ref|m4b:10|m2f:10|tank|calckh|m2b:10|m1b:30|m3f:5
 ```
 
-폭기 전에 참조수(pH 비이커)와 수조수(수조물 비이커)를 모두 준비한 뒤 동시 탈기합니다.
+각 단계의 상세 설명은 [자동화 환경 구성 문서](docs/system-setup.md#자동-측정-시퀀스)를 참조하세요.
 
 ### 주요 명령어
 
@@ -171,6 +119,25 @@ seq:settime:14|m3b:5|m1f:30|m4f:10|air:1800:5|ref|m4b:10|m2f:10|tank|calckh|m2b:
 | 시퀀스 | `seq:cmd1\|cmd2\|...`, `seqstop` |
 
 전체 명령어 및 상세 설명은 [사용 설명서](docs/user-manual.md)를 참조하세요.
+
+## 프로젝트 구조
+
+```
+reefkeeper/
+├── README.md                            # 프로젝트 개요
+├── firmware/
+│   └── aquawiz_ph_meter_final/
+│       └── aquawiz_ph_meter_final.ino   # Arduino 펌웨어
+├── hardware/
+│   ├── fritzing/                        # 회로도
+│   ├── parts/                           # 커스텀 Fritzing 부품
+│   └── housing/                         # 3D 프린팅 하우징 (OpenSCAD)
+└── docs/
+    ├── system-setup.md                  # 자동화 환경 구성 (조립/운용 가이드)
+    ├── user-manual.md                   # 사용 설명서 (전체 명령어)
+    ├── parts-list.md                    # 준비물 목록 (구매 링크)
+    └── images/                          # 다이어그램
+```
 
 ## 산호 수조 권장 dKH 범위
 

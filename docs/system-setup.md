@@ -1,8 +1,6 @@
 # AquaWiz 자동화 환경 구성
 
-## 셋팅 구성
-
-![셋팅 구성](images/setup-demo.svg)
+> 관련 문서: [프로젝트 개요 (README)](../README.md) | [사용 설명서](user-manual.md) | [준비물 목록](parts-list.md)
 
 ## 시스템 구성도
 
@@ -23,6 +21,8 @@
 | ![제어기](../hardware/housing/controller-box.png) | ![펌프+분배기](../hardware/housing/pump-air-box.png) |
 | 180 x 173 x 45mm | 296 x 53 x 75mm |
 | <a href="../hardware/housing/controller-box.scad" target="_blank">OpenSCAD 도면</a> | <a href="../hardware/housing/pump-air-box.scad" target="_blank">OpenSCAD 도면</a> |
+
+OpenSCAD 파라메트릭 설계 — 부품 실측 후 상단 파라미터만 수정하면 치수 자동 조정됩니다.
 
 ## 구성 요소
 
@@ -46,14 +46,14 @@
 | 펌프3 (M3) | KCL 3% 비이커 ↔ pH 측정 비이커 | KCL → pH 비이커 (프로브 보관) | pH 비이커 → KCL 비이커 (저장수 배출) |
 | 펌프4 (M4) | 위즈 탱크 ↔ pH 측정 비이커 | 참조수 → pH 비이커 (측정 이송) | pH 비이커 → 위즈 탱크 (참조수 반환) |
 
-### 에어 공급 (2구 분배)
+### 에어 공급 (3-way 솔레노이드 직렬 연결)
 
 | 채널 | 위치 | 용도 |
 |------|------|------|
 | Air1 (솔레노이드1, D12) | pH 측정 비이커 | 참조수 탈기 (폭기 시 참조수가 담겨 있음) |
 | Air2 (솔레노이드2, D13) | 수조물 비이커 | 수조수 탈기 (폭기 시 수조수가 담겨 있음) |
 
-- 3-way 솔레노이드 밸브 직렬 연결: 기포기 → SOL1 → SOL2
+- 기포기 → SOL1 → SOL2 직렬 연결
 - SOL1 ON → pH 측정 비이커 (참조수 폭기), SOL1 OFF → SOL2로 전달
 - SOL2 ON → 수조물 비이커 (수조수 폭기)
 - 5초 주기로 SOL1/SOL2 교대 작동하여 에어 분배
