@@ -38,7 +38,9 @@ OpenSCAD 파라메트릭 설계 — 부품 실측 후 상단 파라미터만 수
 
 ### 회로도
 
-Fritzing 브레드보드 도면은 `hardware/fritzing/` 디렉토리에 있습니다.
+![브레드보드 회로도](hardware/fritzing/고정밀%20ph%20측정기-bread_bb.png)
+
+Fritzing 소스: <a href="hardware/fritzing/고정밀%20ph%20측정기-bread.fzz" target="_blank">고정밀 ph 측정기-bread.fzz</a> | PDF: <a href="hardware/fritzing/고정밀%20ph%20측정기-bread_bb.pdf" target="_blank">브레드보드 도면</a>
 
 **핀 배치 요약:**
 
