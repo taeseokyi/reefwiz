@@ -156,9 +156,9 @@
         fill="none" stroke="#43A047" stroke-width="2" marker-end="url(#arrow-green)"/>
   <path d="M550,430 L550,540"
         fill="none" stroke="#43A047" stroke-width="2" stroke-dasharray="5,3" marker-start="url(#arrow-green)"/>
-  <rect x="518" y="470" width="55" height="18" rx="4" fill="#43A047"/>
-  <text x="545" y="483" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프4</text>
-  <text x="545" y="555" text-anchor="middle" font-size="10" fill="#2E7D32">(참조 해수)</text>
+  <rect x="490" y="530" width="55" height="18" rx="4" fill="#43A047"/>
+  <text x="517" y="543" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프4</text>
+  <text x="545" y="565" text-anchor="middle" font-size="10" fill="#2E7D32">(참조 해수)</text>
   <text x="530" y="505" text-anchor="middle" font-size="10" fill="#43A047" font-weight="bold">f</text>
   <text x="560" y="505" text-anchor="middle" font-size="10" fill="#43A047" font-weight="bold">b</text>
 
