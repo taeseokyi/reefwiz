@@ -145,15 +145,13 @@
   <!-- f: KCL → pH (위쪽 경로, y=320) -->
   <path d="M640,320 L600,320"
         fill="none" stroke="#FB8C00" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
-  <!-- b: pH → KCL (아래쪽 경로, y=400) -->
-  <path d="M600,400 Q600,415 615,415 L625,415 Q640,415 640,400"
+  <!-- b: pH → KCL (아래쪽 넓은 곡선, y=440) -->
+  <path d="M600,395 Q600,440 620,440 L620,440 Q640,440 640,395"
         fill="none" stroke="#FB8C00" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow-orange)"/>
-  <rect x="603" y="435" width="55" height="18" rx="4" fill="#FB8C00"/>
-  <text x="630" y="448" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프3</text>
-  <rect x="605" y="308" width="14" height="14" rx="2" fill="white" opacity="0.85"/>
-  <text x="612" y="319" text-anchor="middle" font-size="10" fill="#FB8C00" font-weight="bold">f</text>
-  <rect x="612" y="400" width="14" height="14" rx="2" fill="white" opacity="0.85"/>
-  <text x="619" y="411" text-anchor="middle" font-size="10" fill="#FB8C00" font-weight="bold">b</text>
+  <rect x="597" y="450" width="55" height="18" rx="4" fill="#FB8C00"/>
+  <text x="624" y="463" text-anchor="middle" font-size="10" fill="white" font-weight="bold">펌프3</text>
+  <text x="620" y="300" text-anchor="middle" font-size="10" fill="#FB8C00" font-weight="bold">f</text>
+  <text x="620" y="435" text-anchor="middle" font-size="10" fill="#FB8C00" font-weight="bold">b</text>
 
   <!-- Pump 4: 위즈탱크(참조수) ↔ pH 비이커 (green, bidirectional) -->
   <path d="M540,540 L540,430"
