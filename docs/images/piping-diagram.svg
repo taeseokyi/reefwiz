@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 520" font-family="'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="12">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 580" font-family="'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif" font-size="12">
   <defs>
     <marker id="arr-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 Z" fill="#1565C0"/>
@@ -48,12 +48,12 @@
   <text x="668" y="186" text-anchor="middle" font-size="9" fill="#C62828">M2 연결</text>
 
   <!-- M3 진입점 표시 (중단) -->
-  <rect x="643" y="215" width="50" height="16" rx="3" fill="#E65100" opacity="0.15"/>
-  <text x="668" y="226" text-anchor="middle" font-size="9" fill="#E65100">M3 연결</text>
+  <rect x="643" y="255" width="50" height="16" rx="3" fill="#E65100" opacity="0.15"/>
+  <text x="668" y="266" text-anchor="middle" font-size="9" fill="#E65100">M3 연결</text>
 
   <!-- M4 진입점 표시 (하단) -->
-  <rect x="643" y="255" width="50" height="16" rx="3" fill="#2E7D32" opacity="0.15"/>
-  <text x="668" y="266" text-anchor="middle" font-size="9" fill="#2E7D32">M4 연결</text>
+  <rect x="643" y="295" width="50" height="16" rx="3" fill="#2E7D32" opacity="0.15"/>
+  <text x="668" y="306" text-anchor="middle" font-size="9" fill="#2E7D32">M4 연결</text>
 
   <!-- ===== M1: 수조 ↔ 수조물 비이커 ===== -->
   <rect x="50" y="85" width="120" height="50" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
@@ -95,80 +95,80 @@
   <text x="605" y="198" text-anchor="middle" font-size="10" fill="#C62828" font-weight="bold">b: 반환</text>
 
   <!-- ===== M3: KCL ↔ pH 비이커 (중단 진입) ===== -->
-  <rect x="50" y="205" width="120" height="50" rx="8" fill="#FFF8E1" stroke="#E65100" stroke-width="2"/>
-  <text x="110" y="228" text-anchor="middle" font-size="12" font-weight="bold" fill="#E65100">KCL 3% 비이커</text>
-  <text x="110" y="245" text-anchor="middle" font-size="10" fill="#666">200ml (저장수)</text>
+  <rect x="50" y="255" width="120" height="50" rx="8" fill="#FFF8E1" stroke="#E65100" stroke-width="2"/>
+  <text x="110" y="278" text-anchor="middle" font-size="12" font-weight="bold" fill="#E65100">KCL 3% 비이커</text>
+  <text x="110" y="295" text-anchor="middle" font-size="10" fill="#666">200ml (저장수)</text>
 
-  <circle cx="245" cy="230" r="20" fill="#E65100"/>
-  <text x="245" y="234" text-anchor="middle" font-size="12" fill="white" font-weight="bold">M3</text>
-  <text x="245" y="265" text-anchor="middle" font-size="10" fill="#E65100">펌프3 (양방향)</text>
+  <circle cx="245" cy="270" r="20" fill="#E65100"/>
+  <text x="245" y="274" text-anchor="middle" font-size="12" fill="white" font-weight="bold">M3</text>
+  <text x="245" y="305" text-anchor="middle" font-size="10" fill="#E65100">펌프3 (양방향)</text>
 
   <!-- M3 forward -->
-  <line x1="170" y1="223" x2="223" y2="223" stroke="#E65100" stroke-width="2.5" marker-end="url(#arr-o)"/>
-  <path d="M267,223 L638,223" fill="none" stroke="#E65100" stroke-width="2.5" marker-end="url(#arr-o)"/>
+  <line x1="170" y1="263" x2="223" y2="263" stroke="#E65100" stroke-width="2.5" marker-end="url(#arr-o)"/>
+  <path d="M267,263 L638,263" fill="none" stroke="#E65100" stroke-width="2.5" marker-end="url(#arr-o)"/>
   <!-- M3 backward -->
-  <line x1="223" y1="237" x2="170" y2="237" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
-  <path d="M638,233 L267,233" fill="none" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
+  <line x1="223" y1="277" x2="170" y2="277" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
+  <path d="M638,273 L267,273" fill="none" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
 
-  <text x="400" y="213" text-anchor="middle" font-size="10" fill="#E65100" font-weight="bold">f: KCL 공급 (프로브 보관)</text>
-  <text x="400" y="248" text-anchor="middle" font-size="10" fill="#E65100" font-weight="bold">b: KCL 배출 (측정 전)</text>
+  <text x="400" y="253" text-anchor="middle" font-size="10" fill="#E65100" font-weight="bold">f: KCL 공급 (프로브 보관)</text>
+  <text x="400" y="288" text-anchor="middle" font-size="10" fill="#E65100" font-weight="bold">b: KCL 배출 (측정 전)</text>
 
   <!-- ===== M4: 위즈 탱크 ↔ pH 비이커 (하단 진입) ===== -->
-  <rect x="50" y="300" width="120" height="50" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
-  <text x="110" y="323" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">위즈 탱크</text>
-  <text x="110" y="340" text-anchor="middle" font-size="10" fill="#666">참조 해수 3L</text>
+  <rect x="50" y="350" width="120" height="50" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+  <text x="110" y="373" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">위즈 탱크</text>
+  <text x="110" y="390" text-anchor="middle" font-size="10" fill="#666">참조 해수 3L</text>
 
-  <circle cx="245" cy="325" r="20" fill="#2E7D32"/>
-  <text x="245" y="329" text-anchor="middle" font-size="12" fill="white" font-weight="bold">M4</text>
-  <text x="245" y="360" text-anchor="middle" font-size="10" fill="#2E7D32">펌프4 (양방향)</text>
+  <circle cx="245" cy="375" r="20" fill="#2E7D32"/>
+  <text x="245" y="379" text-anchor="middle" font-size="12" fill="white" font-weight="bold">M4</text>
+  <text x="245" y="410" text-anchor="middle" font-size="10" fill="#2E7D32">펌프4 (양방향)</text>
 
   <!-- M4 forward -->
-  <line x1="170" y1="318" x2="223" y2="318" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arr-g)"/>
-  <path d="M267,318 L620,318 Q638,318 638,300 L638,268" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arr-g)"/>
+  <line x1="170" y1="368" x2="223" y2="368" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arr-g)"/>
+  <path d="M267,368 L620,368 Q638,368 638,340 L638,310" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arr-g)"/>
   <!-- M4 backward -->
-  <line x1="223" y1="332" x2="170" y2="332" stroke="#2E7D32" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-g-rev)"/>
-  <path d="M650,268 L650,310 Q650,328 638,328 L267,328" fill="none" stroke="#2E7D32" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-g-rev)"/>
+  <line x1="223" y1="382" x2="170" y2="382" stroke="#2E7D32" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-g-rev)"/>
+  <path d="M650,310 L650,360 Q650,378 638,378 L267,378" fill="none" stroke="#2E7D32" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-g-rev)"/>
 
-  <text x="440" y="310" text-anchor="middle" font-size="10" fill="#2E7D32" font-weight="bold">f: 참조수 이송 (측정)</text>
-  <text x="440" y="345" text-anchor="middle" font-size="10" fill="#2E7D32" font-weight="bold">b: 참조수 반환</text>
+  <text x="440" y="360" text-anchor="middle" font-size="10" fill="#2E7D32" font-weight="bold">f: 참조수 이송 (측정)</text>
+  <text x="440" y="395" text-anchor="middle" font-size="10" fill="#2E7D32" font-weight="bold">b: 참조수 반환</text>
 
   <!-- Separator -->
-  <line x1="30" y1="380" x2="830" y2="380" stroke="#ccc" stroke-width="1"/>
+  <line x1="30" y1="430" x2="830" y2="430" stroke="#ccc" stroke-width="1"/>
 
   <!-- Section: 에어 배관 -->
-  <text x="50" y="410" font-size="14" font-weight="bold" fill="#455A64">에어 배관 (솔레노이드 밸브)</text>
+  <text x="50" y="460" font-size="14" font-weight="bold" fill="#455A64">에어 배관 (솔레노이드 밸브)</text>
 
-  <rect x="50" y="425" width="120" height="50" rx="8" fill="#E1F5FE" stroke="#0288D1" stroke-width="2"/>
-  <text x="110" y="455" text-anchor="middle" font-size="13" font-weight="bold" fill="#0288D1">기포기</text>
+  <rect x="50" y="475" width="120" height="50" rx="8" fill="#E1F5FE" stroke="#0288D1" stroke-width="2"/>
+  <text x="110" y="505" text-anchor="middle" font-size="13" font-weight="bold" fill="#0288D1">기포기</text>
 
-  <rect x="240" y="423" width="70" height="26" rx="6" fill="#0288D1"/>
-  <text x="275" y="440" text-anchor="middle" font-size="10" fill="white" font-weight="bold">SOL1</text>
-  <text x="275" y="465" text-anchor="middle" font-size="9" fill="#0288D1">D12</text>
-  <path d="M170,440 L200,440 L200,436 L238,436" fill="none" stroke="#0288D1" stroke-width="2" marker-end="url(#arr-air)"/>
+  <rect x="240" y="473" width="70" height="26" rx="6" fill="#0288D1"/>
+  <text x="275" y="490" text-anchor="middle" font-size="10" fill="white" font-weight="bold">SOL1</text>
+  <text x="275" y="515" text-anchor="middle" font-size="9" fill="#0288D1">D12</text>
+  <path d="M170,490 L200,490 L200,486 L238,486" fill="none" stroke="#0288D1" stroke-width="2" marker-end="url(#arr-air)"/>
 
-  <rect x="410" y="423" width="130" height="26" rx="6" fill="#FFCDD2" stroke="#C62828" stroke-width="1.5"/>
-  <text x="475" y="440" text-anchor="middle" font-size="11" fill="#C62828">pH 측정 비이커</text>
-  <text x="475" y="465" text-anchor="middle" font-size="9" fill="#C62828">Air1</text>
-  <line x1="310" y1="436" x2="408" y2="436" stroke="#0288D1" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr-air)"/>
+  <rect x="410" y="473" width="130" height="26" rx="6" fill="#FFCDD2" stroke="#C62828" stroke-width="1.5"/>
+  <text x="475" y="490" text-anchor="middle" font-size="11" fill="#C62828">pH 측정 비이커</text>
+  <text x="475" y="515" text-anchor="middle" font-size="9" fill="#C62828">Air1</text>
+  <line x1="310" y1="486" x2="408" y2="486" stroke="#0288D1" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr-air)"/>
 
-  <rect x="240" y="475" width="70" height="26" rx="6" fill="#0288D1"/>
-  <text x="275" y="492" text-anchor="middle" font-size="10" fill="white" font-weight="bold">SOL2</text>
-  <text x="275" y="513" text-anchor="middle" font-size="9" fill="#0288D1">D13</text>
-  <path d="M170,455 L200,455 L200,488 L238,488" fill="none" stroke="#0288D1" stroke-width="2" marker-end="url(#arr-air)"/>
+  <rect x="240" y="525" width="70" height="26" rx="6" fill="#0288D1"/>
+  <text x="275" y="542" text-anchor="middle" font-size="10" fill="white" font-weight="bold">SOL2</text>
+  <text x="275" y="563" text-anchor="middle" font-size="9" fill="#0288D1">D13</text>
+  <path d="M170,505 L200,505 L200,538 L238,538" fill="none" stroke="#0288D1" stroke-width="2" marker-end="url(#arr-air)"/>
 
-  <rect x="410" y="475" width="130" height="26" rx="6" fill="#BBDEFB" stroke="#1565C0" stroke-width="1.5"/>
-  <text x="475" y="492" text-anchor="middle" font-size="11" fill="#1565C0">수조물 비이커</text>
-  <text x="475" y="513" text-anchor="middle" font-size="9" fill="#1565C0">Air2</text>
-  <line x1="310" y1="488" x2="408" y2="488" stroke="#0288D1" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr-air)"/>
+  <rect x="410" y="525" width="130" height="26" rx="6" fill="#BBDEFB" stroke="#1565C0" stroke-width="1.5"/>
+  <text x="475" y="542" text-anchor="middle" font-size="11" fill="#1565C0">수조물 비이커</text>
+  <text x="475" y="563" text-anchor="middle" font-size="9" fill="#1565C0">Air2</text>
+  <line x1="310" y1="538" x2="408" y2="538" stroke="#0288D1" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr-air)"/>
 
-  <rect x="580" y="430" width="200" height="55" rx="6" fill="#FFF9C4" stroke="#F9A825" stroke-width="1"/>
-  <text x="680" y="450" text-anchor="middle" font-size="10" fill="#795548">SOL1/SOL2 동시 개방 불가</text>
-  <text x="680" y="465" text-anchor="middle" font-size="10" fill="#795548">기포기 1대 → 교대 공급</text>
-  <text x="680" y="480" text-anchor="middle" font-size="10" fill="#795548">(5초 주기 참조/수조 교대)</text>
+  <rect x="580" y="480" width="200" height="55" rx="6" fill="#FFF9C4" stroke="#F9A825" stroke-width="1"/>
+  <text x="680" y="500" text-anchor="middle" font-size="10" fill="#795548">SOL1/SOL2 동시 개방 불가</text>
+  <text x="680" y="515" text-anchor="middle" font-size="10" fill="#795548">기포기 1대 → 교대 공급</text>
+  <text x="680" y="530" text-anchor="middle" font-size="10" fill="#795548">(5초 주기 참조/수조 교대)</text>
 
   <!-- Legend -->
-  <line x1="640" y1="340" x2="670" y2="340" stroke="#666" stroke-width="2.5"/>
-  <text x="678" y="344" font-size="9" fill="#666">실선 = 정방향 (f)</text>
-  <line x1="640" y1="355" x2="670" y2="355" stroke="#666" stroke-width="2" stroke-dasharray="5,3"/>
-  <text x="678" y="359" font-size="9" fill="#666">점선 = 역방향 (b)</text>
+  <line x1="640" y1="390" x2="670" y2="390" stroke="#666" stroke-width="2.5"/>
+  <text x="678" y="394" font-size="9" fill="#666">실선 = 정방향 (f)</text>
+  <line x1="640" y1="405" x2="670" y2="405" stroke="#666" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="678" y="409" font-size="9" fill="#666">점선 = 역방향 (b)</text>
 </svg>
