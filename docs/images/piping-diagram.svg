@@ -60,8 +60,10 @@
   <line x1="328" y1="122" x2="275" y2="122" stroke="#1565C0" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-b-rev)"/>
 
   <!-- Labels -->
-  <text x="200" y="103" text-anchor="middle" font-size="8" fill="#1565C0">f: 샘플링</text>
-  <text x="200" y="137" text-anchor="middle" font-size="8" fill="#1565C0">b: 반환</text>
+  <rect x="168" y="93" width="64" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="200" y="103" text-anchor="middle" font-size="8" fill="#1565C0" font-weight="bold">f: 샘플링</text>
+  <rect x="175" y="127" width="50" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="200" y="137" text-anchor="middle" font-size="8" fill="#1565C0" font-weight="bold">b: 반환</text>
 
   <!-- ===== Line 1 continued: ↔ M2 ↔ pH 비이커 ===== -->
 
@@ -83,8 +85,10 @@
   <line x1="618" y1="122" x2="565" y2="122" stroke="#C62828" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-r-rev)"/>
 
   <!-- Labels -->
-  <text x="490" y="103" text-anchor="middle" font-size="8" fill="#C62828">f: 측정 이송</text>
-  <text x="490" y="137" text-anchor="middle" font-size="8" fill="#C62828">b: 반환</text>
+  <rect x="455" y="93" width="70" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="490" y="103" text-anchor="middle" font-size="8" fill="#C62828" font-weight="bold">f: 측정 이송</text>
+  <rect x="465" y="127" width="50" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="490" y="137" text-anchor="middle" font-size="8" fill="#C62828" font-weight="bold">b: 반환</text>
 
   <!-- ===== Line 2: KCL ↔ M3 ↔ pH 비이커 ===== -->
 
@@ -108,8 +112,10 @@
   <path d="M618,122 L575,122 Q575,180 575,223 L275,223" fill="none" stroke="#E65100" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-o-rev)"/>
 
   <!-- Labels -->
-  <text x="400" y="208" text-anchor="middle" font-size="8" fill="#E65100">f: KCL 공급 (프로브 보관)</text>
-  <text x="400" y="240" text-anchor="middle" font-size="8" fill="#E65100">b: KCL 배출 (측정 전)</text>
+  <rect x="330" y="198" width="140" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="400" y="208" text-anchor="middle" font-size="8" fill="#E65100" font-weight="bold">f: KCL 공급 (프로브 보관)</text>
+  <rect x="335" y="230" width="130" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="400" y="240" text-anchor="middle" font-size="8" fill="#E65100" font-weight="bold">b: KCL 배출 (측정 전)</text>
 
   <!-- ===== Line 3: 위즈 탱크 ↔ M4 ↔ pH 비이커 ===== -->
 
@@ -133,8 +139,10 @@
   <path d="M618,122 L600,122 Q600,270 600,318 L275,318" fill="none" stroke="#2E7D32" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-g-rev)"/>
 
   <!-- Labels -->
-  <text x="400" y="303" text-anchor="middle" font-size="8" fill="#2E7D32">f: 참조수 이송 (측정)</text>
-  <text x="400" y="335" text-anchor="middle" font-size="8" fill="#2E7D32">b: 참조수 반환</text>
+  <rect x="335" y="293" width="130" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="400" y="303" text-anchor="middle" font-size="8" fill="#2E7D32" font-weight="bold">f: 참조수 이송 (측정)</text>
+  <rect x="350" y="325" width="100" height="12" rx="2" fill="white" opacity="0.9"/>
+  <text x="400" y="335" text-anchor="middle" font-size="8" fill="#2E7D32" font-weight="bold">b: 참조수 반환</text>
 
   <!-- Separator -->
   <line x1="30" y1="375" x2="770" y2="375" stroke="#ccc" stroke-width="1"/>
