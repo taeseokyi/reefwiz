@@ -142,6 +142,7 @@ MotorTimer motorTimers[4];
 AirState   air;
 WaitState  waitState;
 SeqState   seq;
+bool       seqAdvancePending = false;
 
 // ============================================================
 // Nernst 온도 보상
@@ -241,7 +242,8 @@ void setup() {
     air.totalEnd = 0;   air.switchTime = 0; air.period = 0;
     waitState.active = false; waitState.endTime = 0;
     seq.active = false; seq.total = 0; seq.current = 0;
-    seq.stepRunning = false; memset(seq.steps, 0, sizeof(seq.steps));
+    seq.stepRunning = false; seqAdvancePending = false;
+    memset(seq.steps, 0, sizeof(seq.steps));
 
     printHelp();
     startMeasure(MODE_TANK);
@@ -317,7 +319,13 @@ void loop() {
         if (seq.active && seq.stepRunning) advanceSeq();
     }
 
-    // ⑥ 명령 처리
+    // ⑥ 시퀀스 다음 단계 (재귀 방지, loop에서 처리)
+    if (seqAdvancePending) {
+        seqAdvancePending = false;
+        executeSeqStep();
+    }
+
+    // ⑦ 명령 처리
     handleCommand();
 }
 
@@ -537,11 +545,13 @@ void executeSeqStep() {
 }
 
 void advanceSeq() {
-    seq.stepRunning = false; seq.current++; executeSeqStep();
+    seq.stepRunning = false; seq.current++;
+    seqAdvancePending = true;
 }
 
 void stopSeq() {
-    seq.active = false; seq.stepRunning = false; BTPRINTLNF("[SEQ] 중단");
+    seq.active = false; seq.stepRunning = false;
+    seqAdvancePending = false; BTPRINTLNF("[SEQ] 중단");
 }
 
 // ============================================================
