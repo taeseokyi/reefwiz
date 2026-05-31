@@ -350,7 +350,6 @@ void onSamplingComplete() {
         BTPRINTF(" T:"); BTPRINTFD(temperature,1); BTPRINTLNF("C");
         tankMeasDone = true;
         if (refVoltage > 0.0 && refDKH > 0.0) {
-            refPH = nernstPH(ph.readPH(refVoltage, temperature), temperature);
             deltaPH = refPH - tankPH;
             printKH();
         } else {
@@ -398,7 +397,6 @@ void calcAndSaveKH() {
     if (refDKH    <= 0.0) { BTPRINTLNF("[ERR] refDKH 없음"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
     if (!tankMeasDone)    { BTPRINTLNF("[ERR] tank 미측정"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
 
-    refPH   = nernstPH(ph.readPH(refVoltage, temperature), temperature);
     deltaPH = refPH - tankPH;
     tankDKH = refDKH * pow(10.0, -deltaPH);
 
