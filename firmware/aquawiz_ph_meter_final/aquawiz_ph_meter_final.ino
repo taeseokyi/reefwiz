@@ -614,8 +614,9 @@ void handleCommand() {
     while (i > 0 && (cmdBuf[i-1]==' '||cmdBuf[i-1]=='\r')) cmdBuf[--i]='\0';
     if (cmdBuf[0] == '\0') return;
     if (truncated) {
-        BTPRINTF("[WARN] 명령이 "); BTPRINT(CMD_BUF_SIZE-1);
-        BTPRINTLNF("자 초과→잘림! seq를 나눠 실행하세요");
+        BTPRINTF("[ERR] 명령이 "); BTPRINT(CMD_BUF_SIZE-1);
+        BTPRINTLNF("자 초과! 잘린 명령은 실행하지 않습니다. seq를 나눠 실행하세요");
+        return;
     }
 
     char cmdL[SEQ_CMD_LEN+10];
