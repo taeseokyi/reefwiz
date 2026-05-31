@@ -56,6 +56,23 @@ DeltaPH = pH_ref - pH_tank
 
 > **주의:** 업로드 시 HC-06을 D0/D1에서 반드시 분리하세요. 분리하지 않으면 업로드가 실패합니다.
 
+### 1.4 블루투스 터미널 앱
+
+안드로이드 스마트폰에서 블루투스 시리얼 통신으로 AquaWiz를 제어합니다.
+
+**추천 앱:** <a href="https://play.google.com/store/apps/details?id=de.kai_morich.serial_bluetooth_terminal" target="_blank">Serial Bluetooth Terminal</a> (Kai Morich, 무료)
+
+- HC-05, HC-06 등 Bluetooth Classic SPP 지원
+- 시리얼 터미널 방식으로 명령 입력/응답 확인
+- 매크로 기능으로 자주 쓰는 seq 명령 등록 가능
+- 평점 4.6, 100만+ 다운로드
+
+**연결 방법:**
+1. 안드로이드 설정 → 블루투스 → HC-06 페어링 (PIN: 1234)
+2. Serial Bluetooth Terminal 앱 실행
+3. 좌측 메뉴 → Devices → HC-06 선택 → Connect
+4. 9600 baud 자동 인식, 명령 입력 시작
+
 ---
 
 ## 2. 초기 설정

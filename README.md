@@ -13,7 +13,7 @@
 - **[탄산염 화학법](#측정-원리)** — `KH_tank = KH_ref × 10^(-ΔpH)`, 참조수와 동시 탈기로 CO2 변수 제거
 - **[16비트 고정밀 ADC](docs/parts-list.md)** — ADS1115 + 64회 오버샘플링으로 pH 0.001 단위 분해능
 - **[Nernst 온도 보상](docs/user-manual.md#22-온도-오프셋-설정)** — DS18B20 실시간 수온 측정, pH 전극 온도 보정
-- **[블루투스 제어](docs/user-manual.md)** — HC-06으로 스마트폰에서 원격 제어/모니터링
+- **[블루투스 제어](docs/user-manual.md)** — HC-06으로 스마트폰에서 원격 제어/모니터링 (<a href="https://play.google.com/store/apps/details?id=de.kai_morich.serial_bluetooth_terminal" target="_blank">Serial Bluetooth Terminal</a> 앱 추천)
 - **[밀폐 참조수](docs/system-setup.md#위즈-탱크)** — 락앤락 김치통으로 증발/오염 차단, 경도 장기 안정 유지
 - **[3D 프린팅 하우징](docs/system-setup.md#하우징-3d-프린팅)** — OpenSCAD 파라메트릭 설계, 부품 실측 후 즉시 출력
 
