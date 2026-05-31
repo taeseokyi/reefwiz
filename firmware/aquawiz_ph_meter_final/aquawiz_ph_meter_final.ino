@@ -144,6 +144,13 @@ WaitState  waitState;
 SeqState   seq;
 
 // ============================================================
+// Nernst 온도 보상
+// ============================================================
+float nernstPH(float phRaw, float tempC) {
+    return 7.0 + (phRaw - 7.0) * 298.15 / (273.15 + tempC);
+}
+
+// ============================================================
 // 현재 시각 문자열
 // ============================================================
 void getTimeStr(char* buf) {
@@ -270,7 +277,7 @@ void loop() {
             } else {
                 temperature = t + tempOffset;
             }
-            phValue = ph.readPH(voltage, temperature);
+            phValue = nernstPH(ph.readPH(voltage, temperature), temperature);
             if (phValue < 0.0 || phValue > 14.0) {
                 BTPRINTF("[WARN] pH 이상: "); BTPRINTLN(phValue);
             }
@@ -338,7 +345,7 @@ void onSamplingComplete() {
         BTPRINTF(" T:"); BTPRINTFD(temperature,1); BTPRINTLNF("C");
         tankMeasDone = true;
         if (refVoltage > 0.0 && refDKH > 0.0) {
-            refPH = ph.readPH(refVoltage, temperature);
+            refPH = nernstPH(ph.readPH(refVoltage, temperature), temperature);
             deltaPH = refPH - tankPH;
             printKH();
         } else {
@@ -386,7 +393,7 @@ void calcAndSaveKH() {
     if (refDKH    <= 0.0) { BTPRINTLNF("[ERR] refDKH 없음"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
     if (!tankMeasDone)    { BTPRINTLNF("[ERR] tank 미측정"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
 
-    refPH   = ph.readPH(refVoltage, temperature);
+    refPH   = nernstPH(ph.readPH(refVoltage, temperature), temperature);
     deltaPH = refPH - tankPH;
     tankDKH = refDKH * pow(10.0, -deltaPH);
 
