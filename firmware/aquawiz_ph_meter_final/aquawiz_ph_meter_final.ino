@@ -1,7 +1,7 @@
 /*
  * AquaWiz - pH/dKH 측정 시스템 (탄산염 화학법)
  * KH_tank = KH_ref x 10^(-DeltapH), DeltapH = pH_ref - pH_tank
- * EEPROM: 0x00-0x07 DFRobot_PH, 0x10 refDKH, 0x14 tempOffset
+ * EEPROM: 0x00-0x07 DFRobot_PH, 0x10 refDKH, 0x14 tempOffset, 0x18 calTemp
  */
 
 #include "DFRobot_PH.h"

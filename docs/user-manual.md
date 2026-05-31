@@ -256,8 +256,9 @@ seq:settime:14|m3b:5|m1f:30|m4f:10|air:1800:5|ref|m4b:10|m2f:10|tank|calckh|m2b:
 | 항목 | 저장 위치 | 비고 |
 |------|-----------|------|
 | pH 보정값 (pH4/7 전압) | `0x00~0x07` | DFRobot_PH 라이브러리 자동 관리 |
-| 참조 dKH (`setref`) | `0x10` | 전원 OFF 후에도 유지 |
-| 온도 오프셋 (`settemp`) | `0x14` | 전원 OFF 후에도 유지 |
+| 참조 dKH (`setref`) | `0x10~0x13` | 전원 OFF 후에도 유지 |
+| 온도 오프셋 (`settemp`) | `0x14~0x17` | 전원 OFF 후에도 유지 |
+| pH 보정 온도 (`exitph`) | `0x18~0x1B` | Nernst 보정 기준 온도, 보정 시 자동 저장 |
 | 참조수 pH 전압 (`ref`) | RAM만 | 전원 ON 후 매번 측정 필요 |
 | dKH 측정 이력 (`calckh`) | RAM만 | 전원 OFF 시 소멸 |
 
