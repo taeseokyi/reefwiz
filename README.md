@@ -29,7 +29,7 @@
 
 | 회로도 (Fritzing) | 하우징 (3D 프린팅) |
 |:---:|:---:|
-| [![회로도](hardware/fritzing/고정밀%20ph%20측정기-bread_bb.png)](#회로도) | [![제어기](hardware/housing/controller-box.png)](docs/system-setup.md#하우징-3d-프린팅) [![펌프](hardware/housing/pump-air-box.png)](docs/system-setup.md#하우징-3d-프린팅) |
+| [![회로도](hardware/fritzing/고정밀%20ph%20측정기-bread_bb_v2.png)](#회로도) | [![제어기](hardware/housing/controller-box.png)](docs/system-setup.md#하우징-3d-프린팅) [![펌프](hardware/housing/pump-air-box.png)](docs/system-setup.md#하우징-3d-프린팅) |
 
 ## 측정 정확도
 
@@ -72,7 +72,7 @@ KH_tank = KH_ref × 10^(-ΔpH)
 
 ### 회로도
 
-![브레드보드 회로도](hardware/fritzing/고정밀%20ph%20측정기-bread_bb.png)
+![브레드보드 회로도](hardware/fritzing/고정밀%20ph%20측정기-bread_bb_v2.png)
 
 Fritzing 소스: <a href="hardware/fritzing/고정밀%20ph%20측정기-bread.fzz" target="_blank">고정밀 ph 측정기-bread.fzz</a> | PDF: <a href="hardware/fritzing/고정밀%20ph%20측정기-bread_bb.pdf" target="_blank">브레드보드 도면</a>
 
