@@ -306,8 +306,8 @@ void loop() {
         if (raw < 0) raw = 0;
         float v = ads.computeVolts(raw) * 1000.0;
         float p = nernstPH(ph.readPH(v, temperature), temperature);
-        BTPRINTF("  [모니터] V:"); BTPRINTFD(v,1);
-        BTPRINTF(" pH:"); BTPRINTFD(p,2);
+        BTPRINTF("  [모니터] V:"); BTPRINTFD(v,3);
+        BTPRINTF(" pH:"); BTPRINTFD(p,3);
         BTPRINTF(" T:"); BTPRINTLNFD(temperature,1);
     }
 
