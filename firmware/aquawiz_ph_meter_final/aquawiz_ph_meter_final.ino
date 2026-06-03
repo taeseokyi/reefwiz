@@ -295,7 +295,19 @@ void loop() {
         }
     }
 
-    // ② 모터 타이머 (millis 오버플로우 안전)
+    // ② 보정 모드 모니터링 (2초마다 전압/pH 표시)
+    static unsigned long calMonTime = 0;
+    if (phCalMode && currentMode == MODE_IDLE && (long)(now - calMonTime) >= 0) {
+        calMonTime = now + 2000UL;
+        int16_t raw = ads.readADC_SingleEnded(0);
+        if (raw < 0) raw = 0;
+        float v = ads.computeVolts(raw) * 1000.0;
+        float p = nernstPH(ph.readPH(v, temperature), temperature);
+        BTPRINTF("  [모니터] V:"); BTPRINTFD(v,1);
+        BTPRINTF(" pH:"); BTPRINTLNFD(p,2);
+    }
+
+    // ③ 모터 타이머 (millis 오버플로우 안전)
     for (int i = 0; i < 4; i++) {
         if (motorTimers[i].active && (long)(now - motorTimers[i].endTime) >= 0) {
             digitalWrite(motorTimers[i].pinA, LOW);
@@ -306,7 +318,7 @@ void loop() {
         }
     }
 
-    // ③ 에어 교대 (millis 오버플로우 안전)
+    // ④ 에어 교대 (millis 오버플로우 안전)
     if (air.active) {
         if ((long)(now - air.totalEnd) >= 0) {
             stopAir(); BTPRINTLNF("[에어] 완료");
@@ -318,19 +330,19 @@ void loop() {
         }
     }
 
-    // ④ 대기 타이머 (millis 오버플로우 안전)
+    // ⑤ 대기 타이머 (millis 오버플로우 안전)
     if (waitState.active && (long)(now - waitState.endTime) >= 0) {
         waitState.active = false; BTPRINTLNF("[대기] 완료");
         if (seq.active && seq.stepRunning) advanceSeq();
     }
 
-    // ⑤ 시퀀스 다음 단계 (재귀 방지, loop에서 처리)
+    // ⑥ 시퀀스 다음 단계 (재귀 방지, loop에서 처리)
     if (seqAdvancePending) {
         seqAdvancePending = false;
         executeSeqStep();
     }
 
-    // ⑥ 명령 처리
+    // ⑦ 명령 처리
     handleCommand();
 }
 
