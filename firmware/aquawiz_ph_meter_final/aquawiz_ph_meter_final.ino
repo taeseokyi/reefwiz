@@ -461,6 +461,9 @@ void calcRefDKH() {
     refDKH = newRefDKH;
     EEPROM.put(REF_DKH_ADDR, refDKH);
     BTPRINTF("[OK] refDKH 저장:"); BTPRINTFD(refDKH,3); BTPRINTLNF(" dKH");
+
+    tankMeasDone = false; refMeasDone = false;
+    BTPRINTLNF("[INFO] ref/tank 재측정 필요");
 }
 
 // ============================================================
