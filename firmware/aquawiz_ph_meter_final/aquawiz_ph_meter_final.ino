@@ -685,6 +685,8 @@ void handleCommand() {
         if (strcmp(cmdL,"enterph")==0) {
             phCalMode = true;
             calphPending = false;
+            char enterCmd[] = "ENTERPH";
+            ph.calibration(voltage, temperature, enterCmd);
             BTPRINTLNF("[보정] 진입→안정화 후 calph 실행");
         } else if (!phCalMode) {
             BTPRINTLNF("[ERR] enterph 먼저 실행");
