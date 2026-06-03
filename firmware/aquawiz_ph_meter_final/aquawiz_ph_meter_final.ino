@@ -625,9 +625,7 @@ void executeOneCmd(const char* rawCmd) {
 
     // 솔레노이드 직접
     if (strcmp(cmd,"ron")==0)  { digitalWrite(SOL_REF,  HIGH); BTPRINTLNF("[SOL] 참조ON"); }
-    else if (strcmp(cmd,"roff")==0) { stopAir(); BTPRINTLNF("[SOL] OFF"); }
     else if (strcmp(cmd,"ton")==0)  { digitalWrite(SOL_TANK, HIGH); BTPRINTLNF("[SOL] 수조ON"); }
-    else if (strcmp(cmd,"toff")==0) { stopAir(); BTPRINTLNF("[SOL] OFF"); }
     else { BTPRINTF("[?] "); BTPRINTLN(cmd); }
     if (seq.active && seq.stepRunning) advanceSeq();
 }
