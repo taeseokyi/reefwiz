@@ -252,7 +252,7 @@ void setup() {
     seq.stepRunning = false; seqAdvancePending = false;
     memset(seq.steps, 0, sizeof(seq.steps));
 
-    printHelp();
+    BTPRINTLNF("[READY] 명령대기 (help 입력)");
 }
 
 // ============================================================
