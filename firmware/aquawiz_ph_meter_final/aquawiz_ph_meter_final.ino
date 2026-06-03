@@ -355,13 +355,6 @@ void onSamplingComplete() {
         BTPRINTF(" pH:"); BTPRINTFD(tankPH,3);
         BTPRINTF(" T:"); BTPRINTFD(temperature,1); BTPRINTLNF("C");
         tankMeasDone = true;
-        if (refVoltage > 0.0 && refDKH > 0.0) {
-            deltaPH = refPH - tankPH;
-            printKH();
-        } else {
-            if (refVoltage <= 0.0) BTPRINTLNF("[WARN] ref 없음→'ref' 실행");
-            if (refDKH    <= 0.0) BTPRINTLNF("[WARN] refDKH 없음→'setref'");
-        }
         if (seq.active && seq.stepRunning) advanceSeq();
 
     } else if (currentMode == MODE_REF) {
@@ -377,22 +370,6 @@ void onSamplingComplete() {
     }
     BTPRINTLNF("---");
     currentMode = MODE_IDLE;
-}
-
-// ============================================================
-// dKH 출력 (tank 측정 직후 자동 호출)
-// ============================================================
-void printKH() {
-    tankDKH = refDKH * pow(10.0, -deltaPH);
-    if (tankDKH < 0.0 || tankDKH > 50.0) {
-        BTPRINTF("[WARN] dKH 이상: "); BTPRINTLN(tankDKH);
-        BTPRINTLNF("  pH보정 또는 refDKH 확인"); return;
-    }
-    BTPRINTF("[참조] pH:"); BTPRINTFD(refPH,3);
-    BTPRINTF(" dKH:"); BTPRINTLNFD(refDKH,3);
-    BTPRINTF("[수조] pH:"); BTPRINTFD(tankPH,3);
-    BTPRINTF(" dPH:"); BTPRINTLNFD(deltaPH,4);
-    BTPRINTF("  dKH:"); BTPRINTFD(tankDKH,3); BTPRINTLNF(" dKH");
 }
 
 // ============================================================
