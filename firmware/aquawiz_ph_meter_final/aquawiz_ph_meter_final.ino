@@ -681,7 +681,6 @@ void handleCommand() {
                 EEPROM.put(CAL_TEMP_ADDR, calTemp);
                 BTPRINTF("[보정] 완료 보정온도:"); BTPRINTFD(calTemp,1); BTPRINTLNF("C");
                 phCalMode = false;
-                startMeasure(MODE_TANK);
             }
         }
         return;
