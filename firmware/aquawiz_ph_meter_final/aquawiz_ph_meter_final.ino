@@ -145,6 +145,7 @@ AirState   air;
 WaitState  waitState;
 SeqState   seq;
 bool       seqAdvancePending = false;
+bool       phCalMode = false;
 
 // ============================================================
 // Nernst 온도 보상
@@ -661,14 +662,20 @@ void handleCommand() {
 
     // pH 보정
     if (strcmp(cmdL,"enterph")==0||strcmp(cmdL,"calph")==0||strcmp(cmdL,"exitph")==0) {
-        if (strcmp(cmdL,"enterph")==0) { BTPRINTLNF("[보정] 진입→버퍼삽입→calph"); startMeasure(MODE_CALIBRATION); }
-        else {
+        if (strcmp(cmdL,"enterph")==0) {
+            phCalMode = true;
+            BTPRINTLNF("[보정] 진입→버퍼삽입→calph");
+            startMeasure(MODE_CALIBRATION);
+        } else if (!phCalMode) {
+            BTPRINTLNF("[ERR] enterph 먼저 실행");
+        } else {
             if (!voltageReady) { BTPRINTLNF("[WARN] 미준비"); return; }
             ph.calibration(voltage, temperature, cmdBuf);
             if (strcmp(cmdL,"exitph")==0) {
                 calTemp = temperature;
                 EEPROM.put(CAL_TEMP_ADDR, calTemp);
                 BTPRINTF("[보정] 완료 보정온도:"); BTPRINTFD(calTemp,1); BTPRINTLNF("C");
+                phCalMode = false;
                 startMeasure(MODE_TANK);
             }
         }
