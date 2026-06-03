@@ -299,12 +299,16 @@ void loop() {
     static unsigned long calMonTime = 0;
     if (phCalMode && !voltageReady && currentMode == MODE_IDLE && (long)(now - calMonTime) >= 0) {
         calMonTime = now + 2000UL;
+        sensors.requestTemperatures();
+        float t = sensors.getTempCByIndex(0);
+        if (t != DEVICE_DISCONNECTED_C && t > -10.0 && t < 85.0) temperature = t + tempOffset;
         int16_t raw = ads.readADC_SingleEnded(0);
         if (raw < 0) raw = 0;
         float v = ads.computeVolts(raw) * 1000.0;
         float p = nernstPH(ph.readPH(v, temperature), temperature);
         BTPRINTF("  [모니터] V:"); BTPRINTFD(v,1);
-        BTPRINTF(" pH:"); BTPRINTLNFD(p,2);
+        BTPRINTF(" pH:"); BTPRINTFD(p,2);
+        BTPRINTF(" T:"); BTPRINTLNFD(temperature,1);
     }
 
     // ③ 모터 타이머 (millis 오버플로우 안전)
