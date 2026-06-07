@@ -388,8 +388,10 @@ void onSamplingComplete() {
         BTPRINTF(" pH:"); BTPRINTFD(phValue,3);
         BTPRINTF(" T:"); BTPRINTFD(temperature,1); BTPRINTLNF("C");
         calphPending = false;
+        bool inRange = (voltage>1322&&voltage<1678)||(voltage>1854&&voltage<2210);
         char calCmd[] = "CALPH";
         ph.calibration(voltage, temperature, calCmd);
+        if (!inRange) voltageReady = false;
     }
     BTPRINTLNF("---");
     currentMode = MODE_IDLE;
