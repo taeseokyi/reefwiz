@@ -40,7 +40,7 @@
 
   <!-- Wiz Tank (reference water container) -->
   <rect x="310" y="180" width="460" height="380" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2.5" stroke-dasharray="none"/>
-  <text x="540" y="205" text-anchor="middle" font-size="16" font-weight="bold" fill="#2E7D32">위즈 탱크 (참조 해수 3L)</text>
+  <text x="540" y="205" text-anchor="middle" font-size="16" font-weight="bold" fill="#2E7D32">위즈 탱크 (참조 해수 5L)</text>
 
   <!-- Reference water fill -->
   <rect x="320" y="340" width="440" height="210" rx="8" fill="url(#water)" opacity="0.5"/>

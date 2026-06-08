@@ -118,7 +118,7 @@
   <!-- ===== M4: 위즈 탱크 ↔ pH 비이커 (하단 진입) ===== -->
   <rect x="50" y="350" width="120" height="50" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
   <text x="110" y="373" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">위즈 탱크</text>
-  <text x="110" y="390" text-anchor="middle" font-size="10" fill="#666">참조 해수 3L</text>
+  <text x="110" y="390" text-anchor="middle" font-size="10" fill="#666">참조 해수 5L</text>
 
   <!-- M4 forward -->
   <line x1="170" y1="368" x2="223" y2="368" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arr-g)"/>

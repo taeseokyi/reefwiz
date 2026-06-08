@@ -74,7 +74,7 @@
   <!-- ===== 위즈 탱크 ===== -->
   <rect x="240" y="180" width="250" height="180" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="2" stroke-dasharray="6,3"/>
   <text x="365" y="200" text-anchor="middle" font-size="13" font-weight="bold" fill="#1565C0">위즈 탱크</text>
-  <text x="365" y="215" text-anchor="middle" font-size="9" fill="#666">다이소 락앤락 김치통 (3L)</text>
+  <text x="365" y="215" text-anchor="middle" font-size="9" fill="#666">다이소 락앤락 김치통 (5L)</text>
 
   <!-- 참조 해수 영역 -->
   <rect x="250" y="270" width="230" height="80" rx="3" fill="#B3E5FC" opacity="0.4"/>

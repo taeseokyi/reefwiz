@@ -71,7 +71,7 @@
     <circle cx="626" cy="323" r="3" fill="#FF6D00"/>
     <text x="638" y="300" font-size="7" fill="#E65100">DS18B20</text>
   </g>
-  <text x="480" y="230" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">위즈 탱크 (락앤락 김치통 3L)</text>
+  <text x="480" y="230" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">위즈 탱크 (락앤락 김치통 5L)</text>
 
   <!-- ===== 펌프 + 분배기 ===== -->
   <g filter="url(#sh)">
