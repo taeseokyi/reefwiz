@@ -2,7 +2,7 @@
 
 > 관련 문서: [프로젝트 개요 (README)](../README.md) | [자동화 환경 구성](system-setup.md) | [사용 설명서](user-manual.md)
 
-## 디바이스마트 (주문번호: 2026052420462117683)
+## 디바이스마트
 
 | # | 사진 | 부품명 | 수량 | 금액 |
 |---|------|--------|------|------|
@@ -13,19 +13,17 @@
 | 5 | ![](images/parts/dm-1376882.jpg) | <a href="https://www.devicemart.co.kr/goods/view?no=1376882" target="_blank">블루투스 모듈 HC-06 (DIP) 펌웨어 v1.8</a> | 1 | 5,500원 |
 | 6 | ![](images/parts/dm-1321161.jpg) | <a href="https://www.devicemart.co.kr/goods/view?no=1321161" target="_blank">5V 고정 출력 강하형 DC-DC 3A 컨버터</a> | 1 | 3,500원 |
 | 7 | ![](images/parts/dm-1345967.jpg) | <a href="https://www.devicemart.co.kr/goods/view?no=1345967" target="_blank">PWM 12V 2A DC모터 속도 제어 컨트롤러</a> | 4 | 8,000원 |
-| 9 | ![](images/parts/dm-1322408.jpg) | <a href="https://www.devicemart.co.kr/goods/view?no=1322408" target="_blank">브레드보드 830핀 MB-102</a> | 2 | 2,800원 |
-| | | **디바이스마트 소계** | | **125,720원** |
+| 9 | ![](images/parts/dm-1322408.jpg) | <a href="https://www.devicemart.co.kr/goods/view?no=1322408" target="_blank">브레드보드 830핀 MB-102</a> | 1 | 1,400원 |
+| | | **디바이스마트 소계** | | **124,320원** |
 
-> 결제일: 2026-05-24 / 결제방식: 카드
 
-## AliExpress (주문번호: 1120797983932991)
+## AliExpress
 
 | # | 사진 | 부품명 | 수량 | 금액 |
 |---|------|--------|------|------|
 | 10 | ![](images/parts/ali-pump.png) | <a href="https://www.aliexpress.com/item/1005001888639071.html" target="_blank">연동 펌프 NKP-DC-B06B (12V, yellow)</a> | 4 | ₩21,680 |
 | | | **AliExpress 소계** | | **₩21,680** |
 
-> 주문일: 2026-05-24 / 결제수단: KakaoPay
 
 ## 별도 구매 필요 부품
 
@@ -59,7 +57,7 @@
 
 | 구매처 | 금액 |
 |--------|------|
-| 디바이스마트 | 125,720원 |
+| 디바이스마트 | 124,320원 |
 | AliExpress | 21,680원 |
 | 별도 구매 | 미정 |
-| **주문 합계** | **147,400원** |
+| **주문 합계** | **146,000원** |
