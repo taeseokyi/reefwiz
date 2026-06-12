@@ -84,10 +84,10 @@
   <circle cx="512" cy="373" r="2" fill="#90CAF9" opacity="0.5"/>
   <text x="510" y="425" text-anchor="middle" font-size="9" fill="#1976D2" font-weight="bold">Air1</text>
 
-  <!-- Beaker 3: KCL 3% 비이커 -->
+  <!-- Beaker 3: 3M KCl 비이커 -->
   <rect x="640" y="280" width="110" height="150" rx="6" fill="white" stroke="#F9A825" stroke-width="1.5"/>
   <rect x="645" y="350" width="100" height="75" rx="3" fill="url(#kcl)"/>
-  <text x="695" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">KCL 3%</text>
+  <text x="695" y="305" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">3M KCl</text>
   <text x="695" y="320" text-anchor="middle" font-size="12" font-weight="bold" fill="#F9A825">비이커</text>
   <text x="695" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
 
@@ -105,7 +105,7 @@
   <text x="895" y="265" text-anchor="middle" font-size="13" font-weight="bold" fill="#7B1FA2">4구 연동 펌프 (양방향)</text>
   <text x="845" y="290" font-size="10" fill="#7B1FA2">M1: 수조 ↔ 수조물</text>
   <text x="845" y="308" font-size="10" fill="#7B1FA2">M2: 수조물 ↔ pH</text>
-  <text x="845" y="326" font-size="10" fill="#7B1FA2">M3: KCL 3% ↔ pH</text>
+  <text x="845" y="326" font-size="10" fill="#7B1FA2">M3: 3M KCl ↔ pH</text>
   <text x="845" y="344" font-size="10" fill="#7B1FA2">M4: 참조수 ↔ pH</text>
 
   <!-- Air pump unit -->

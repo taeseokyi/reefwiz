@@ -91,7 +91,7 @@
   <text x="362" y="285" text-anchor="middle" font-size="8" fill="#78909C">+프로브</text>
 
   <rect x="405" y="230" width="55" height="80" rx="3" fill="white" stroke="#F9A825" stroke-width="1.5"/>
-  <text x="432" y="260" text-anchor="middle" font-size="9" fill="#F9A825" font-weight="bold">KCL 3%</text>
+  <text x="432" y="260" text-anchor="middle" font-size="9" fill="#F9A825" font-weight="bold">3M KCl</text>
   <text x="432" y="275" text-anchor="middle" font-size="8" fill="#666">200ml</text>
 
   <!-- DS18B20 -->

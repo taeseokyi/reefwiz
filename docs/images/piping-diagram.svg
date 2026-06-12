@@ -97,7 +97,7 @@
 
   <!-- ===== M3: KCL ↔ pH 비이커 (중단 진입) ===== -->
   <rect x="50" y="255" width="120" height="50" rx="8" fill="#FFF8E1" stroke="#E65100" stroke-width="2"/>
-  <text x="110" y="278" text-anchor="middle" font-size="12" font-weight="bold" fill="#E65100">KCL 3% 비이커</text>
+  <text x="110" y="278" text-anchor="middle" font-size="12" font-weight="bold" fill="#E65100">3M KCl 비이커</text>
   <text x="110" y="295" text-anchor="middle" font-size="10" fill="#666">200ml (저장수)</text>
 
   <!-- M3 forward -->

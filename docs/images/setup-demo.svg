@@ -63,7 +63,7 @@
     <!-- 비이커3: KCL -->
     <rect x="530" y="255" width="80" height="120" rx="4" fill="white" stroke="#F9A825" stroke-width="1.5" opacity="0.9"/>
     <rect x="535" y="320" width="70" height="50" rx="2" fill="url(#kg)"/>
-    <text x="570" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#F9A825">KCL 3%</text>
+    <text x="570" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#F9A825">3M KCl</text>
     <text x="570" y="295" text-anchor="middle" font-size="8" fill="#888">200ml</text>
 
     <!-- DS18B20 -->
