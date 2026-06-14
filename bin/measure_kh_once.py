@@ -23,10 +23,10 @@ from datetime import datetime
 
 PORT     = 'COM14'
 BAUD     = 9600
-AIR_SECS = 1800         # 탈기 시간(초) — 테스트 시 줄여서 사용
+AIR_SECS = 1200         # 탈기 시간(초) — 테스트 시 줄여서 사용
 STABLE_SECS   = 60      # 채움 후 안정화(초) — tank/ref 동일 (타이밍 대칭)
 CONV_INTERVAL = 45      # 수렴 판정 재측정 간격(초)
-CONV_EPS      = 0.003   # 수렴 기준: 연속 측정 pH 차
+CONV_EPS      = 0.005   # 수렴 기준: 연속 측정 pH 차 (노이즈 0.001~0.002의 3~5배)
 CONV_MAX      = 6       # 최대 측정 횟수
 DAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dkh.dat')
 LOG_FILE = r'C:\dkh\measure_kh.log' if os.name == 'nt' else None
@@ -179,7 +179,7 @@ def run_measurement(ser):
     send(ser, 'airoff', stop_pattern='OFF')
     send(ser, 'ton', stop_pattern='수조ON')
     print("\n[준비] 수조수 샘플링 (→챔버)")
-    send_motor(ser, 1, 'm1f:5')
+    send_motor(ser, 1, 'm1f:80')
     send(ser, 'airoff', stop_pattern='OFF')
 
     # ── 폭기: 저장수조(5L)+챔버 동시, 프로브는 측정컵 KCl 소크 ──
@@ -197,14 +197,14 @@ def run_measurement(ser):
     # ── tank ──────────────────────────────────
     send(ser, 'ton', stop_pattern='수조ON')
     print("\n[tank] KCL 보관액 배출")
-    send_motor(ser, 3, 'm3b:5')
+    send_motor(ser, 3, 'm3b:68')
 
     print("\n[tank] KCL 스윕 (= 측정컵 헹굼)")
-    send_motor(ser, 2, 'm2f:2')
-    send_motor(ser, 2, 'm2b:2')
+    send_motor(ser, 2, 'm2f:60')
+    send_motor(ser, 2, 'm2b:68')
 
     print("\n[tank] 수조수 채움")
-    send_motor(ser, 2, 'm2f:5')
+    send_motor(ser, 2, 'm2f:60')
     send(ser, 'airoff', stop_pattern='OFF')
 
     print(f"\n[tank] {STABLE_SECS}초 안정화")
@@ -214,15 +214,15 @@ def run_measurement(ser):
 
     send(ser, 'ton', stop_pattern='수조ON')
     print("\n[tank] 수조수 배출")
-    send_motor(ser, 2, 'm2b:5')
+    send_motor(ser, 2, 'm2b:68')
 
     # ── ref: tank 블록과 헹굼·채움·안정화 타이밍 동일 ──
     print("\n[ref] 참조수 헹굼 (tank 잔막 제거)")
-    send_motor(ser, 4, 'm4f:2')
-    send_motor(ser, 4, 'm4b:2')
+    send_motor(ser, 4, 'm4f:60')
+    send_motor(ser, 4, 'm4b:68')
 
     print("\n[ref] 참조수 채움")
-    send_motor(ser, 4, 'm4f:5')
+    send_motor(ser, 4, 'm4f:60')
     send(ser, 'airoff', stop_pattern='OFF')
 
     print(f"\n[ref] {STABLE_SECS}초 안정화")
@@ -235,14 +235,14 @@ def run_measurement(ser):
 
     send(ser, 'ton', stop_pattern='수조ON')
     print("\n[ref] 참조수 배출")
-    send_motor(ser, 4, 'm4b:5')
+    send_motor(ser, 4, 'm4b:68')
 
     # ── 정리 ──────────────────────────────────
     print("\n[정리] 챔버수 방출 (KCl 포함 → 본수조 희석)")
-    send_motor(ser, 1, 'm1b:5')
+    send_motor(ser, 1, 'm1b:92')
 
     print("\n[정리] KCL 공급")
-    send_motor(ser, 3, 'm3f:5')
+    send_motor(ser, 3, 'm3f:60')
     send(ser, 'airoff', stop_pattern='OFF')
 
     # ── 파싱 ──────────────────────────────────
