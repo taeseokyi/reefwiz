@@ -204,6 +204,8 @@ KH이력:2개
 newRefDKH = 수조dKH × 10^(-(tankPH − refPH))
 ```
 
+> 참고: calref의 `dPH`는 `tankPH − refPH`로, calkh/§1.1의 ΔpH(`refPH − tankPH`)와 부호가 반대입니다. calref는 calkh의 역산(참조 dKH를 거꾸로 구함)이라 부호가 뒤집힌 것이며, 결과는 서로 일관됩니다.
+
 **출력 예시:**
 
 ```
