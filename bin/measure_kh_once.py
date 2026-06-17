@@ -1,27 +1,23 @@
 #!/usr/bin/env python3
 """
-AquaWiz KH 1회 측정 스크립트
+AquaWiz KH 1회 측정 (V4 — 평형(plateau) 추종 측정)
 HC-06 블루투스 시리얼로 한 번만 측정하고 dkh.dat 에 기록 후 종료.
 
-대칭화 시퀀스 (v2 — 측정 챔버/홀딩 챔버 동시 폭기):
-  tank = 본수조 → 측정 챔버(에어스톤)에서 폭기·측정.
-  ref  = 위즈수조 → 홀딩 챔버(에어스톤)에서 폭기 → 측정 챔버로 이송·측정.
-  둘을 단일 ron 창에서 동시 폭기해 시간상수를 맞춰(부피 대칭) 방 CO₂ 과도
-  비대칭을 제거한다. 측정 직전 본수조수로 측정 챔버 KCl 잔막을 헹군다.
-  참조수는 측정 후 위즈수조로 순환 회수(폐기 아님). 프로브는 측정 사이
-  KCl에 소크. tank 먼저, ref 나중(측정 챔버에서 폭기되어 프로브 마름 없음).
-  측정은 수렴 판정(연속 차 < CONV_EPS)으로 반복 — 수렴 횟수는 전극 건강 지표.
+V4 (2026-06-17): "측정 중 폭기 + 윈도우 평탄도로 *진짜 평형*까지" 측정.
+  - tank·ref 를 폭기 유지(ron)한 채 반복 측정, 최근 FLAT_N개 max-min ≤ FLAT_EPS 면
+    평형 도달로 보고 종료. → 격차(시작 CO₂)에 자동 적응(평탄할 때까지 측정).
+    차동에서 ref·tank 가 같은 평형(실내공기 pCO₂)에 도달 → 방 CO₂ 상쇄.
+  - [A] tank·ref 동시 폭기 + tank 평탄까지 측정 (이때 ref 는 홀딩 챔버서 함께 폭기 = co-aeration).
+    [B] tank 완전 배출(오염방지, 단축불가) → ref 측정챔버 이송 → 폭기 + 평탄까지 측정
+       (co-aeration 덕에 평형 근처라 빨리 끝남). 전이(A→B)는 무대기로 최대한 조임
+       (t2−t1 최소화 = 측정 사이 방 CO₂ 표류 잔류 최소화).
+  - ★무한 대기 방지: phase 별 PHASE_MAX_SECS·MEAS_MAX·연속실패 FAIL_MAX 상한,
+    시리얼 read 타임아웃. 평탄 미도달 시 마지막값+경고로 종료(행 안 함).
+  - ★규칙: 액체 이동(mXf/mXb) 직전 airoff. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
+  - 오류/비정상 종료 시 비상 정리(_safe_cleanup): 에어 OFF + 측정챔버 배출 + KCl 소크 복원.
+  ※ 측정 중 폭기라 절대 pH 에 흐름(streaming) 오프셋 — V3 이전 절대값과 직접 비교 금지
+    (오프셋은 ref·tank 공통모드라 ΔpH/dKH 엔 무영향).
   ※ 널테스트 한정: ref 채우기 전 헹굼 생략. 정상운영(KH 다름) 복귀 시 복원 필수.
-
-V3 (2026-06-17 — 측정 중 폭기 + ref 측정챔버 재폭기 + KCl 기포 청소):
-  ① KCl 헹굼물 채운 뒤 정지 상태에서 기포 청소(CLEAN_SECS) → KCl 잔막 제거.
-  ② tank·ref 모두 **폭기 유지한 채** 수렴 측정 — 시료를 가스 평형에 핀고정해
-     ref·tank를 같은 pCO₂로 맞춤(차동에서 CO₂ 상쇄). 흐름 전위 오프셋은 양쪽
-     동일 폭기라 공통모드로 상쇄, 절대 pH만 이동(dKH 무영향).
-  ③ ref는 측정챔버로 이송 후 REF_REAIR_SECS 재폭기 → tank와 동일 챔버·상태로 측정.
-  ★규칙: 액체 이동(mXf/mXb) 직전에는 반드시 airoff. 폭기(ron)는 액체 정지
-     구간(기포 청소·측정)에서만. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
-  ※ 측정 중 폭기라 절대 pH 값 성격이 V2와 다름(흐름 오프셋 포함) — 직접 비교 금지.
 
 dkh.dat 형식 (한 줄에 하나):
   HH ref_pH tank_pH ref_kh tank_kh temp
@@ -38,13 +34,17 @@ from datetime import datetime
 
 PORT     = 'COM15'
 BAUD     = 9600
-AIR_SECS = 1200         # 탈기 시간(초) — 테스트 시 줄여서 사용
-REF_REAIR_SECS = 300    # V3: ref를 측정 챔버에서 재폭기(초, 5분) — tank와 동일 챔버서 폭기 평형
-CLEAN_SECS    = 60      # V3: KCl 헹굼 시 기포 청소 dwell(초) — 액체 정지 중에만 폭기(이동 전 airoff)
-STABLE_SECS   = 0       # 채움 후 안정화(초) — tank/ref 동일 (타이밍 대칭). 제품 스펙 응답시간 최대 2분
-CONV_INTERVAL = 45      # 수렴 판정 재측정 간격(초)
-CONV_EPS      = 0.002   # 수렴 기준: 연속 측정 pH 차 (노이즈 0.0005~0.002의 1~4배, ≈0.04 dKH)
-CONV_MAX      = 6       # 최대 측정 횟수
+CLEAN_SECS     = 60      # KCl 헹굼 기포 청소(초) — 액체 정지 중에만 폭기(이동 전 airoff)
+
+# ── 윈도우 평탄도(평형) 판정 — measure_until_flat ──
+FLAT_N         = 4       # 최근 N개 읽기로 판정 (CSV 검증: K=4)
+FLAT_EPS       = 0.002   # 최근 N개 max-min ≤ 이 값이면 평탄(평형) (CSV 검증: 0.002→8.100 정확)
+MEAS_INTERVAL  = 40      # 측정 간 간격(초) — 이 동안 폭기 지속
+# ── ★무한 대기 방지 상한 ──
+PHASE_MAX_SECS = 2400    # phase(tank/ref)별 최대 측정 시간(초). 초과 시 마지막값+경고
+MEAS_MAX       = 80      # phase별 최대 측정 횟수(백스톱)
+FAIL_MAX       = 5       # 연속 측정 파싱 실패 허용 횟수 → 초과 시 phase 실패
+
 DAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dkh.dat')
 LOG_FILE = r'C:\dkh\measure_kh.log' if os.name == 'nt' else None
 
@@ -67,7 +67,7 @@ def setup_logging():
     if target is not None:
         sys.stdout = target
         sys.stderr = target
-        print(f"\n===== measure_kh_once {datetime.now():%Y-%m-%d %H:%M:%S} =====")
+        print(f"\n===== measure_kh_once V4 {datetime.now():%Y-%m-%d %H:%M:%S} =====")
 
 
 # ─────────────────────────────────────────────
@@ -129,7 +129,7 @@ def send_motor(ser, motor_idx, cmd):
 
 
 # ─────────────────────────────────────────────
-# 수렴 측정
+# 평형(plateau) 추종 측정 — 윈도우 평탄도
 # ─────────────────────────────────────────────
 
 def parse_ph(lines, label):
@@ -141,24 +141,55 @@ def parse_ph(lines, label):
     return None
 
 
-def measure_converged(ser, what):
-    """'tank'/'ref'를 CONV_INTERVAL초 간격으로 반복 측정,
-    연속 차 < CONV_EPS면 수렴으로 보고 종료.
-    펌웨어가 마지막 값을 덮어쓰므로 최종 측정값이 calkh 에 쓰인다.
-    반환: 측정 횟수 (횟수 증가 = 전극 응답 둔화 신호)."""
+def measure_until_flat(ser, what):
+    """폭기 켠 채(ron, 호출자가 ON 상태로 진입) what('tank'/'ref')를 반복 측정.
+    최근 FLAT_N개 pH의 (max-min) ≤ FLAT_EPS 면 평형(평탄) 도달로 보고 종료.
+    펌웨어가 마지막 측정값을 refPH/tankPH 에 보관하므로 최종(평탄) 값이 calkh 에 쓰인다.
+
+    ★무한 대기 방지: 경과 PHASE_MAX_SECS 또는 측정 MEAS_MAX 회 초과 시 마지막값+경고로 종료.
+      연속 파싱 실패 FAIL_MAX 회 초과 시 실패(ph=None) 반환.
+    반환: (ph, n_reads, flat_ok). ph=None 이면 측정 실패(응답 없음/계속 실패)."""
     label = '수조수' if what == 'tank' else '참조수'
-    prev = None
-    for i in range(1, CONV_MAX + 1):
+    window = []
+    last_ph = None
+    fails = 0
+    t0 = time.time()
+    n = 0
+    while True:
+        n += 1
         lines = send(ser, what, stop_pattern='[OK]', timeout=20)
         ph = parse_ph(lines, label)
-        if ph is not None and prev is not None and abs(ph - prev) < CONV_EPS:
-            print(f"    [수렴] {what} {i}회 (Δ={abs(ph - prev):.4f})")
-            return i
-        prev = ph
-        if i < CONV_MAX:
-            time.sleep(CONV_INTERVAL)
-    print(f"    [수렴실패] {what} {CONV_MAX}회 — 마지막 값으로 진행")
-    return CONV_MAX
+        if ph is None:
+            fails += 1
+            print(f"    [측정실패 {fails}/{FAIL_MAX}] {what}")
+            if fails >= FAIL_MAX:
+                print(f"    [실패] {what} 연속 {FAIL_MAX}회 응답 이상 — phase 중단")
+                return last_ph, n, False
+            # 실패는 측정 횟수엔 세되, 평탄 윈도우엔 미반영
+        else:
+            fails = 0
+            last_ph = ph
+            window.append(ph)
+            if len(window) > FLAT_N:
+                window.pop(0)
+            elapsed = int(time.time() - t0)
+            if len(window) >= FLAT_N:
+                span = max(window) - min(window)
+                print(f"    [{what}] {n}회 pH:{ph:.3f} 최근{FLAT_N}span:{span:.3f} ({elapsed}s)")
+                if span <= FLAT_EPS:
+                    print(f"    [평탄] {what} {n}회 — 최근{FLAT_N} span={span:.3f}≤{FLAT_EPS} → 평형 (pH {ph:.3f})")
+                    return ph, n, True
+            else:
+                print(f"    [{what}] {n}회 pH:{ph:.3f} (윈도우 채우는 중 {len(window)}/{FLAT_N}, {elapsed}s)")
+
+        # ── 무한 대기 방지 ──
+        if time.time() - t0 >= PHASE_MAX_SECS:
+            print(f"    [상한] {what} {PHASE_MAX_SECS}s 초과 — 미평탄, 마지막값 {last_ph} 채택")
+            return last_ph, n, False
+        if n >= MEAS_MAX:
+            print(f"    [상한] {what} 측정 {MEAS_MAX}회 초과 — 미평탄, 마지막값 {last_ph} 채택")
+            return last_ph, n, False
+        time.sleep(MEAS_INTERVAL)
 
 
 # ─────────────────────────────────────────────
@@ -188,106 +219,107 @@ def parse_results(kh_lines):
 
 
 # ─────────────────────────────────────────────
-# 측정 루틴
+# 비상 정리 (오류/비정상 종료 시 프로브를 KCl 에 소크)
+# ─────────────────────────────────────────────
+
+def _safe_cleanup(ser):
+    """에어 OFF + 측정챔버 배출 + KCl 소크 복원. 각 단계 guard(예외/타임아웃 무시)."""
+    print("\n[비상정리] 에어 OFF + 측정챔버 배출 + KCl 소크 복원 시도")
+    for cmd, stop in (('airoff', 'OFF'), ('ton', '수조ON')):
+        try: send(ser, cmd, stop_pattern=stop, timeout=5)
+        except Exception: pass
+    try: send_motor(ser, 1, 'm1b:82')   # 측정챔버 배출(오염방지 완전배출)
+    except Exception: pass
+    try: send_motor(ser, 3, 'm3f:60')   # KCl 소크
+    except Exception: pass
+    try: send(ser, 'airoff', stop_pattern='OFF', timeout=5)
+    except Exception: pass
+
+
+# ─────────────────────────────────────────────
+# 측정 루틴 (V4)
 # ─────────────────────────────────────────────
 
 def run_measurement(ser):
-    # ── KCl 배출 (프로브 KCl 소크 해제) ──────────
-    send(ser, 'airoff', stop_pattern='OFF')
-    send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[준비] KCl 배출 (측정 챔버)")
-    send_motor(ser, 3, 'm3b:68')
+    completed = False
+    try:
+        # ── 준비: KCl 배출 → 헹굼물 채움 → 기포 청소(정지 중) → 배출 → 측정수 채움 → ref 홀딩 ──
+        send(ser, 'airoff', stop_pattern='OFF')
+        send(ser, 'ton', stop_pattern='수조ON')
+        print("\n[준비] KCl 배출 (측정 챔버)")
+        send_motor(ser, 3, 'm3b:68')
+        print("\n[tank] 측정 챔버 헹굼물 채움")
+        send_motor(ser, 1, 'm1f:60')
+        print(f"\n[tank] 기포 청소 {CLEAN_SECS}초 (KCl 잔막 — 액체 정지 중 폭기)")
+        send(ser, 'ron', stop_pattern='참조ON')
+        time.sleep(CLEAN_SECS)
+        send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff
+        send(ser, 'ton', stop_pattern='수조ON')
+        print("\n[tank] 더러운 헹굼물 배출 → 본수조")
+        send_motor(ser, 1, 'm1b:72')
+        print("\n[tank] 본수조수 채움 (측정용 → 측정 챔버)")
+        send_motor(ser, 1, 'm1f:70')
+        print("\n[ref] 참조수 → 홀딩 챔버")
+        send_motor(ser, 4, 'm4f:60')
 
-    # ── tank: 헹굼물 채움 → 기포 청소(정지 중) → 배출 → 측정수 채움 ──
-    # V3①: 헹굼물 채운 뒤 액체 정지 상태에서 기포 청소(CLEAN_SECS)로 KCl 잔막 제거.
-    print("\n[tank] 본수조수로 측정 챔버 헹굼물 채움")
-    send_motor(ser, 1, 'm1f:60')
-    print(f"\n[tank] 기포 청소 {CLEAN_SECS}초 (KCl 잔막 제거 — 액체 정지 중 폭기)")
-    send(ser, 'ron', stop_pattern='참조ON')
-    time.sleep(CLEAN_SECS)
-    send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff
-    send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[tank] 더러운 헹굼물 배출 → 본수조")
-    send_motor(ser, 1, 'm1b:72')
-    print("\n[tank] 본수조수 채움 (측정용 → 측정 챔버)")
-    send_motor(ser, 1, 'm1f:70')
+        # ── [A] 양쪽 동시 폭기 + tank 평탄(평형)까지 측정 (ref 는 홀딩서 함께 폭기) ──
+        send(ser, 'airoff', stop_pattern='OFF')
+        print("\n[폭기] ON (측정챔버 tank + 홀딩 ref 동시) — tank 평탄까지 측정")
+        send(ser, 'ron', stop_pattern='참조ON')
+        tank_ph, tank_n, tank_flat = measure_until_flat(ser, 'tank')
+        if tank_ph is None:
+            raise RuntimeError("tank 측정 실패(응답 없음)")
 
-    # ── ref 준비: 위즈수조 → 홀딩 챔버 ──
-    print("\n[ref] 참조수 → 홀딩 챔버")
-    send_motor(ser, 4, 'm4f:60')
+        # ── 전이(무대기, 최대한 조임): tank 완전배출 → ref 이송 ──
+        send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff
+        send(ser, 'ton', stop_pattern='수조ON')
+        print("\n[tank] 수조수 완전 배출 → 본수조 (오염방지, 단축 불가)")
+        send_motor(ser, 1, 'm1b:82')
+        print("\n[ref] 홀딩 → 측정 챔버")
+        send_motor(ser, 2, 'm2f:60')
 
-    # ── 메인 폭기: 측정 챔버(tank) + 홀딩 챔버(ref) 동시 ──
-    send(ser, 'airoff', stop_pattern='OFF')
-    print("\n[폭기] 에어 펌프 ON (측정 챔버 tank + 홀딩 챔버 ref 동시)")
-    send(ser, 'ron', stop_pattern='참조ON')
+        # ── [B] ref 폭기 + 평탄(평형)까지 측정 (co-aeration 이라 평형 근처서 시작 → 빨리) ──
+        send(ser, 'airoff', stop_pattern='OFF')
+        send(ser, 'ron', stop_pattern='참조ON')
+        print("\n[폭기] ON — ref 평탄까지 측정")
+        ref_ph, ref_n, ref_flat = measure_until_flat(ser, 'ref')
+        if ref_ph is None:
+            raise RuntimeError("ref 측정 실패(응답 없음)")
 
-    print(f"\n[폭기] {AIR_SECS}초 탈기 대기 중...")
-    for elapsed in range(0, AIR_SECS, 60):
-        remaining = AIR_SECS - elapsed
-        print(f"    남은 시간: {remaining}초")
-        time.sleep(min(60, remaining))
+        # ── KH 계산 (펌웨어 저장 refPH/tankPH = 각 phase 마지막 평탄값) ──
+        print("\n[ref] KH 계산")
+        kh_lines = send(ser, 'calkh', stop_pattern='===========', timeout=10)
 
-    # ── tank 측정 (V3②: 폭기 유지한 채 수렴 측정 — 가스 평형에 핀고정) ──
-    # airoff 안 함(측정은 액체 이동 아님). 상태=에어ON·PWM OFF.
-    print(f"\n[tank] {STABLE_SECS}초 안정화 (폭기 중)")
-    time.sleep(STABLE_SECS)
-    print("\n[tank] 수조수 pH (폭기 중 수렴 판정)")
-    tank_n = measure_converged(ser, 'tank')
+        # ── 정상 정리: ref 회수 → KCl 소크 ──
+        send(ser, 'ton', stop_pattern='수조ON')
+        print("\n[정리] 참조수 배출 → 홀딩 → 위즈수조 (순환 회수)")
+        send_motor(ser, 2, 'm2b:68')
+        send_motor(ser, 4, 'm4b:68')
+        print("\n[정리] KCl 공급 (프로브 소크)")
+        send_motor(ser, 3, 'm3f:60')
+        send(ser, 'airoff', stop_pattern='OFF')
+        completed = True
 
-    # ── tank 배출 → 본수조, ref 이송 (★액체 이동 전 airoff) ──
-    send(ser, 'airoff', stop_pattern='OFF')
-    send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[tank] 수조수 배출 → 본수조")
-    send_motor(ser, 1, 'm1b:82')
-    # 헹굼 생략: 널테스트라 수조수↔참조수 성분차 극히 작음.
-    # ※ 정상운영(수조 KH ≠ 참조수) 복귀 시 여기에 측정 챔버 헹굼 복원 필수 (tank→ref 캐리오버 방지).
-    print("\n[ref] 홀딩 챔버 참조수 → 측정 챔버")
-    send_motor(ser, 2, 'm2f:60')
-
-    # ── ref 재폭기 + 측정 (V3②③: 측정챔버서 재폭기 후 폭기 중 수렴, tank와 동일 상태) ──
-    send(ser, 'airoff', stop_pattern='OFF')          # 상태 리셋(PWM OFF — tank 측정과 동일)
-    send(ser, 'ron', stop_pattern='참조ON')           # 에어 ON
-    print(f"\n[ref] 측정 챔버 재폭기 {REF_REAIR_SECS}초 (폭기 중)")
-    for elapsed in range(0, REF_REAIR_SECS, 60):
-        remaining = REF_REAIR_SECS - elapsed
-        print(f"    남은 시간: {remaining}초")
-        time.sleep(min(60, remaining))
-    print(f"\n[ref] {STABLE_SECS}초 안정화 (폭기 중)")
-    time.sleep(STABLE_SECS)
-    print("\n[ref] 참조수 pH (폭기 중 수렴 판정)")
-    ref_n = measure_converged(ser, 'ref')
-
-    print("\n[ref] KH 계산")
-    kh_lines = send(ser, 'calkh', stop_pattern='===========', timeout=10)
-
-    # ── ref 회수 (★액체 이동 전 airoff) ──
-    send(ser, 'airoff', stop_pattern='OFF')
-    send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[정리] 참조수 배출 → 홀딩 → 위즈수조 (순환 회수)")
-    send_motor(ser, 2, 'm2b:68')
-    send_motor(ser, 4, 'm4b:68')
-
-    # ── KCl 공급 (프로브 소크), 종료 — 지속 폭기(terminal ron) 없음 ──
-    print("\n[정리] KCl 공급 (프로브 소크)")
-    send_motor(ser, 3, 'm3f:60')
-    send(ser, 'airoff', stop_pattern='OFF')
-
-    # ── 파싱 ──────────────────────────────────
-    ref_ph, tank_ph, ref_kh, tank_kh, temp = parse_results(kh_lines)
-
-    print("\n" + "=" * 40)
-    print("측정 결과")
-    print("=" * 40)
-    if ref_ph  is not None: print(f"  참조수 pH : {ref_ph:.3f}")
-    if tank_ph is not None: print(f"  수조수 pH : {tank_ph:.3f}")
-    if ref_kh  is not None: print(f"  참조 dKH  : {ref_kh:.3f} dKH")
-    if tank_kh is not None: print(f"  수조 dKH  : {tank_kh:.3f} dKH")
-    if temp    is not None: print(f"  온도      : {temp:.1f} C")
-    print(f"  수렴 횟수 : tank {tank_n}회 / ref {ref_n}회")
-    if tank_kh is None:     print("  dKH 파싱 실패")
-    print("=" * 40)
-
-    return (ref_ph, tank_ph, ref_kh, tank_kh, temp)
+        # ── 파싱·출력 ──
+        ref_ph_r, tank_ph_r, ref_kh, tank_kh, temp = parse_results(kh_lines)
+        print("\n" + "=" * 40)
+        print("측정 결과 (V4)")
+        print("=" * 40)
+        if ref_ph_r  is not None: print(f"  참조수 pH : {ref_ph_r:.3f}")
+        if tank_ph_r is not None: print(f"  수조수 pH : {tank_ph_r:.3f}")
+        if ref_kh    is not None: print(f"  참조 dKH  : {ref_kh:.3f} dKH")
+        if tank_kh   is not None: print(f"  수조 dKH  : {tank_kh:.3f} dKH")
+        if temp      is not None: print(f"  온도      : {temp:.1f} C")
+        print(f"  평탄도달 : tank {tank_n}회 {'O' if tank_flat else 'X(상한)'} / "
+              f"ref {ref_n}회 {'O' if ref_flat else 'X(상한)'}")
+        if not (tank_flat and ref_flat):
+            print("  ※ 일부 phase 가 평탄 미도달(상한)로 종료 — 값 신뢰도 주의")
+        if tank_kh is None: print("  dKH 파싱 실패")
+        print("=" * 40)
+        return (ref_ph_r, tank_ph_r, ref_kh, tank_kh, temp)
+    finally:
+        if not completed:
+            _safe_cleanup(ser)
 
 
 # ─────────────────────────────────────────────
@@ -299,7 +331,7 @@ def main():
     now  = datetime.now()
     hour = now.hour
 
-    print(f"AquaWiz KH 1회 측정 — {port} @ {BAUD}baud")
+    print(f"AquaWiz KH 1회 측정 V4 — {port} @ {BAUD}baud")
     print(f"기록 파일: {DAT_FILE}")
     print(f"측정 시작: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
