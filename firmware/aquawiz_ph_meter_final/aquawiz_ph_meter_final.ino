@@ -37,7 +37,6 @@
 // ============================================================
 // 시퀀스/이력 설정
 // ============================================================
-#define SEQ_MAX_STEPS  20
 #define SEQ_CMD_LEN    24
 #define CMD_BUF_SIZE   128
 #define KH_HIST_MAX    5
@@ -87,13 +86,6 @@ struct WaitState {
     unsigned long endTime;
 };
 
-struct SeqState {
-    bool  active;
-    char  steps[SEQ_MAX_STEPS][SEQ_CMD_LEN];
-    int   total;
-    int   current;
-    bool  stepRunning;
-};
 
 // ============================================================
 // 객체 선언
@@ -107,13 +99,15 @@ DFRobot_PH        ph;
 // 오버샘플링
 // ============================================================
 const int           SAMPLE_N        = 64;
+const int           TRIM_N          = 16;   // 트림 평균: 정렬 후 상·하위 각 TRIM_N개 버림(버블 스파이크 제거). 0이면 단순 평균
 const unsigned long SAMPLE_INTERVAL = 125;
 
 // ============================================================
 // 전역 변수
 // ============================================================
 int           sampleCount    = 0;
-float         sampleSum      = 0.0;
+float         sampleSum      = 0.0;       // (트림 평균으로 대체 — 리셋 호환 위해 유지)
+int16_t       sampleBuf[SAMPLE_N];        // 트림 평균용 raw 샘플 버퍼 (int16×64 = 128 B)
 unsigned long lastSampleTime = 0;
 bool          voltageReady   = false;
 
@@ -142,8 +136,6 @@ DateTime   currentTime;
 MotorTimer motorTimers[4];
 AirState   air;
 WaitState  waitState;
-SeqState   seq;
-bool       seqAdvancePending = false;
 bool       phCalMode = false;
 bool       calphPending = false;
 
@@ -249,9 +241,6 @@ void setup() {
     air.active = false; air.refTurn = true;
     air.totalEnd = 0;   air.switchTime = 0; air.period = 0;
     waitState.active = false; waitState.endTime = 0;
-    seq.active = false; seq.total = 0; seq.current = 0;
-    seq.stepRunning = false; seqAdvancePending = false;
-    memset(seq.steps, 0, sizeof(seq.steps));
 
     BTPRINTLNF("[READY] 명령대기 (help 입력)");
 }
@@ -267,7 +256,7 @@ void loop() {
         lastSampleTime = now;
         int16_t raw = ads.readADC_SingleEnded(0);
         if (raw < 0) raw = 0;
-        sampleSum += ads.computeVolts(raw) * 1000.0;
+        sampleBuf[sampleCount] = raw;     // 트림 평균용: raw 저장 (정렬은 64개 모인 뒤)
         sampleCount++;
 
         if (sampleCount % 16 == 0) {
@@ -276,7 +265,17 @@ void loop() {
         }
 
         if (sampleCount >= SAMPLE_N) {
-            voltage = sampleSum / SAMPLE_N;
+            // 트림 평균: 삽입정렬 후 상·하위 각 TRIM_N개 버리고 중앙 (SAMPLE_N-2*TRIM_N)개만 평균.
+            // computeVolts는 선형이라 raw 트림 평균 = mV 트림 평균과 동일.
+            for (int i = 1; i < SAMPLE_N; i++) {
+                int16_t key = sampleBuf[i]; int j = i - 1;
+                while (j >= 0 && sampleBuf[j] > key) { sampleBuf[j+1] = sampleBuf[j]; j--; }
+                sampleBuf[j+1] = key;
+            }
+            float vsum = 0.0;
+            for (int i = TRIM_N; i < SAMPLE_N - TRIM_N; i++)
+                vsum += ads.computeVolts(sampleBuf[i]) * 1000.0;
+            voltage = vsum / (SAMPLE_N - 2 * TRIM_N);
             sampleSum = 0.0; sampleCount = 0; voltageReady = true;
 
             sensors.requestTemperatures();
@@ -317,7 +316,7 @@ void loop() {
             digitalWrite(motorTimers[i].pinB, LOW);
             motorTimers[i].active = false;
             BTPRINTF("[모터"); BTPRINT(i+1); BTPRINTLNF("] 완료");
-            if (seq.active && seq.stepRunning) advanceSeq();
+            
         }
     }
 
@@ -325,7 +324,7 @@ void loop() {
     if (air.active) {
         if ((long)(now - air.totalEnd) >= 0) {
             stopAir(); BTPRINTLNF("[에어] 완료");
-            if (seq.active && seq.stepRunning) advanceSeq();
+            
         } else if ((long)(now - air.switchTime) >= 0) {
             air.refTurn = !air.refTurn;
             air.switchTime = now + air.period;
@@ -336,14 +335,9 @@ void loop() {
     // ⑤ 대기 타이머 (millis 오버플로우 안전)
     if (waitState.active && (long)(now - waitState.endTime) >= 0) {
         waitState.active = false; BTPRINTLNF("[대기] 완료");
-        if (seq.active && seq.stepRunning) advanceSeq();
+        
     }
 
-    // ⑥ 시퀀스 다음 단계 (재귀 방지, loop에서 처리)
-    if (seqAdvancePending) {
-        seqAdvancePending = false;
-        executeSeqStep();
-    }
 
     // ⑦ 명령 처리
     handleCommand();
@@ -372,7 +366,7 @@ void onSamplingComplete() {
         BTPRINTF(" pH:"); BTPRINTFD(tankPH,3);
         BTPRINTF(" T:"); BTPRINTFD(temperature,1); BTPRINTLNF("C");
         tankMeasDone = true; BTPRINTLNF("[OK]");
-        if (seq.active && seq.stepRunning) advanceSeq();
+        
 
     } else if (currentMode == MODE_REF) {
         refPH = phValue;
@@ -381,7 +375,7 @@ void onSamplingComplete() {
         BTPRINTF(" T:"); BTPRINTFD(temperature,1); BTPRINTLNF("C");
         refMeasDone = true; BTPRINTLNF("[OK]");
         currentMode = MODE_IDLE;
-        if (seq.active && seq.stepRunning) advanceSeq();
+        
         return;
     } else if (currentMode == MODE_CALIBRATION && calphPending) {
         BTPRINTF("[CAL] V:"); BTPRINTFD(voltage,3);
@@ -401,16 +395,16 @@ void onSamplingComplete() {
 // dKH 계산 + 이력 저장
 // ============================================================
 void calcAndSaveKH() {
-    if (!refMeasDone) { BTPRINTLNF("[ERR] ref 없음"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
-    if (refDKH    <= 0.0) { BTPRINTLNF("[ERR] refDKH 없음"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
-    if (!tankMeasDone)    { BTPRINTLNF("[ERR] tank 미측정"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
+    if (!refMeasDone) { BTPRINTLNF("[ERR] ref 없음");  return; }
+    if (refDKH    <= 0.0) { BTPRINTLNF("[ERR] refDKH 없음");  return; }
+    if (!tankMeasDone)    { BTPRINTLNF("[ERR] tank 미측정");  return; }
 
     deltaPH = refPH - tankPH;
     tankDKH = refDKH * pow(10.0, -deltaPH);
 
     if (tankDKH < 0.0 || tankDKH > 50.0) {
         BTPRINTF("[WARN] dKH 이상:"); BTPRINTLN(tankDKH);
-        if(seq.active&&seq.stepRunning)advanceSeq(); return;
+         return;
     }
 
     char ts[KH_TIME_LEN]; getTimeStr(ts);
@@ -428,7 +422,7 @@ void calcAndSaveKH() {
     BTPRINTF("[OK] 이력저장 총"); BTPRINT(khHistCount); BTPRINTLNF("개");
 
     tankMeasDone = false; refMeasDone = false;
-    if (seq.active && seq.stepRunning) advanceSeq();
+    
 }
 
 // ============================================================
@@ -474,7 +468,7 @@ void calcRefDKH() {
 void motorRunTimed(int idx, int pinA, int pinB, bool fwd, long sec) {
     if (sec <= 0 || sec > 3600) {
         BTPRINTLNF("[ERR] 모터시간 1~3600초");
-        if(seq.active&&seq.stepRunning)advanceSeq(); return;
+         return;
     }
     if (motorTimers[idx].active) {
         digitalWrite(motorTimers[idx].pinA, LOW);
@@ -506,8 +500,8 @@ void motorAllStop() {
 // 에어 공급
 // ============================================================
 void startAir(long totalSec, long periodSec) {
-    if (totalSec<=0||totalSec>7200)  { BTPRINTLNF("[ERR] 에어시간 1~7200"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
-    if (periodSec<=0||periodSec>totalSec) { BTPRINTLNF("[ERR] 주기 1~총시간"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
+    if (totalSec<=0||totalSec>7200)  { BTPRINTLNF("[ERR] 에어시간 1~7200");  return; }
+    if (periodSec<=0||periodSec>totalSec) { BTPRINTLNF("[ERR] 주기 1~총시간");  return; }
     stopAir();
     air.active     = true; air.refTurn = true;
     air.totalEnd   = millis() + (unsigned long)totalSec  * 1000UL;
@@ -532,67 +526,12 @@ void stopAir() {
 // 대기
 // ============================================================
 void startWait(long sec) {
-    if (sec<=0||sec>3600) { BTPRINTLNF("[ERR] 대기 1~3600초"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
+    if (sec<=0||sec>3600) { BTPRINTLNF("[ERR] 대기 1~3600초");  return; }
     waitState.active  = true;
     waitState.endTime = millis() + (unsigned long)sec * 1000UL;
     BTPRINTF("[대기] "); BTPRINT(sec); BTPRINTLNF("초");
 }
 
-// ============================================================
-// 시퀀스
-// ============================================================
-bool parseSeq(const char* cmdLine) {
-    const char* colon = strchr(cmdLine, ':');
-    if (!colon) { BTPRINTLNF("[ERR] seq 형식: seq:cmd1|cmd2"); return false; }
-    seq.total = 0; seq.current = 0; seq.active = false; seq.stepRunning = false;
-    const char* p = colon + 1;
-    while (*p && seq.total < SEQ_MAX_STEPS) {
-        const char* sep = strchr(p, '|');
-        int len = sep ? (int)(sep - p) : (int)strlen(p);
-        if (len > 0) {
-            if (len >= SEQ_CMD_LEN) len = SEQ_CMD_LEN - 1;
-            strncpy(seq.steps[seq.total], p, len);
-            seq.steps[seq.total][len] = '\0';
-            seq.total++;
-        }
-        if (!sep) break;
-        p = sep + 1;
-    }
-    if (seq.total == 0) { BTPRINTLNF("[ERR] 명령 없음"); return false; }
-    if (*p && seq.total >= SEQ_MAX_STEPS) {
-        BTPRINTF("[ERR] seq 최대 "); BTPRINT(SEQ_MAX_STEPS);
-        BTPRINTLNF("단계 초과!");
-        seq.total = 0; return false;
-    }
-    return true;
-}
-
-void runSeq() {
-    seq.active = true; seq.current = 0; seq.stepRunning = false;
-    BTPRINTF("[SEQ] 시작 "); BTPRINT(seq.total); BTPRINTLNF("단계");
-    executeSeqStep();
-}
-
-void executeSeqStep() {
-    if (!seq.active || seq.current >= seq.total) {
-        seq.active = false; seq.stepRunning = false;
-        BTPRINTLNF("[SEQ] 완료"); return;
-    }
-    BTPRINTF("[SEQ] "); BTPRINT(seq.current+1); BTPRINTF("/");
-    BTPRINT(seq.total); BTPRINTF("→"); BTPRINTLN(seq.steps[seq.current]);
-    seq.stepRunning = true;
-    executeOneCmd(seq.steps[seq.current]);
-}
-
-void advanceSeq() {
-    seq.stepRunning = false; seq.current++;
-    seqAdvancePending = true;
-}
-
-void stopSeq() {
-    seq.active = false; seq.stepRunning = false;
-    seqAdvancePending = false; BTPRINTLNF("[SEQ] 중단");
-}
 
 // ============================================================
 // 단일 명령 실행
@@ -611,14 +550,14 @@ void executeOneCmd(const char* rawCmd) {
             char ts[KH_TIME_LEN]; getTimeStr(ts);
             BTPRINTF("[OK] 시각(시): "); BTPRINTLN(ts);
         } else { BTPRINTLNF("[ERR] settime:HH (0~23)"); }
-        if (seq.active && seq.stepRunning) advanceSeq(); return;
+         return;
     }
 
     // ref / tank / calkh / calref
     if (strcmp(cmd,"ref")==0)     { refMeasDone=false;  startMeasure(MODE_REF);  return; }
     if (strcmp(cmd,"tank")==0)    { tankMeasDone=false; startMeasure(MODE_TANK); return; }
     if (strcmp(cmd,"calkh")==0)  { calcAndSaveKH(); return; }
-    if (strcmp(cmd,"calref")==0) { calcRefDKH(); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
+    if (strcmp(cmd,"calref")==0) { calcRefDKH();  return; }
 
     // 모터: m1f:초, m1b:초, m1s
     struct { int idx; int pa; int pb; const char* pf; } mdef[4] = {
@@ -633,7 +572,7 @@ void executeOneCmd(const char* rawCmd) {
         snprintf(pfS, sizeof(pfS), "%ss", pff);
         if (strncmp(cmd, pfF, 4)==0) { motorRunTimed(mdef[i].idx,mdef[i].pa,mdef[i].pb,true,  atol(cmd+4)); return; }
         if (strncmp(cmd, pfB, 4)==0) { motorRunTimed(mdef[i].idx,mdef[i].pa,mdef[i].pb,false, atol(cmd+4)); return; }
-        if (strcmp(cmd, pfS)==0)     { motorStopNow(mdef[i].idx,mdef[i].pa,mdef[i].pb); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
+        if (strcmp(cmd, pfS)==0)     { motorStopNow(mdef[i].idx,mdef[i].pa,mdef[i].pb);  return; }
     }
 
     // 에어: air:총초:주기초
@@ -643,7 +582,7 @@ void executeOneCmd(const char* rawCmd) {
         if (*p2==':') per = strtol(p2+1, NULL, 10);
         startAir(tot, per); return;
     }
-    if (strcmp(cmd,"airoff")==0) { stopAir(); BTPRINTLNF("[에어] OFF"); if(seq.active&&seq.stepRunning)advanceSeq(); return; }
+    if (strcmp(cmd,"airoff")==0) { stopAir(); BTPRINTLNF("[에어] OFF");  return; }
 
     // 대기
     if (strncmp(cmd,"wait:",5)==0) { startWait(atol(cmd+5)); return; }
@@ -652,7 +591,7 @@ void executeOneCmd(const char* rawCmd) {
     if (strcmp(cmd,"ron")==0)  { digitalWrite(SOL_REF,  HIGH); BTPRINTLNF("[SOL] 참조ON"); }
     else if (strcmp(cmd,"ton")==0)  { digitalWrite(SOL_TANK, HIGH); BTPRINTLNF("[SOL] 수조ON"); }
     else { BTPRINTF("[?] "); BTPRINTLN(cmd); }
-    if (seq.active && seq.stepRunning) advanceSeq();
+    
 }
 
 // ============================================================
@@ -676,7 +615,7 @@ void handleCommand() {
     if (cmdBuf[0] == '\0') return;
     if (truncated) {
         BTPRINTF("[ERR] 명령이 "); BTPRINT(CMD_BUF_SIZE-1);
-        BTPRINTLNF("자 초과! seq를 나눠 실행하세요");
+        BTPRINTLNF("자 초과");
         return;
     }
 
@@ -745,14 +684,6 @@ void handleCommand() {
         return;
     }
 
-    // seq
-    if (strncmp(cmdL,"seq:",4)==0) {
-        if (seq.active) { BTPRINTLNF("[WARN] 실행중→seqstop"); return; }
-        if (parseSeq(cmdBuf)) runSeq();
-        return;
-    }
-    if (strcmp(cmdL,"seqstop")==0) { stopSeq(); motorAllStop(); stopAir(); waitState.active=false; return; }
-
     // 일반
     if (strcmp(cmdL,"status")==0)   { printStatus(); return; }
     if (strcmp(cmdL,"khhist")==0)   { printKHHist(); return; }
@@ -794,9 +725,6 @@ void printStatus() {
         long r=((long)waitState.endTime-(long)millis())/1000L;
         BTPRINT(r); BTPRINTLNF("초");
     } else BTPRINTLNF("-");
-    BTPRINTF("[SEQ] ");
-    if (seq.active) { BTPRINT(seq.current+1); BTPRINTF("/"); BTPRINTLN(seq.total); }
-    else BTPRINTLNF("-");
     BTPRINTLNF("============");
 }
 
@@ -812,6 +740,5 @@ void printHelp() {
     BTPRINTLNF("[모터] m1f:초 m1b:초 m1s (m2~m4동일)");
     BTPRINTLNF("[에어] air:총초:주기초 | airoff");
     BTPRINTLNF("[대기] wait:초");
-    BTPRINTLNF("[SEQ] seq:cmd1|cmd2|... | seqstop");
     BTPRINTLNF("=============");
 }
