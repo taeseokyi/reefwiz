@@ -3,10 +3,15 @@
 AquaWiz KH 1회 측정 스크립트
 HC-06 블루투스 시리얼로 한 번만 측정하고 dkh.dat 에 기록 후 종료.
 
-대칭화 시퀀스: 저장수조(5L) 직접 폭기, tank 우선 측정.
-KCl 스윕이 tank 헹굼을 겸하고, tank/ref 블록의 헹굼·채움·안정화
-타이밍을 동일하게 맞춰 전극 응답 지연을 공통모드로 상쇄한다.
-측정은 수렴 판정(연속 차 < CONV_EPS)으로 반복 — 수렴 횟수는 전극 건강 지표.
+대칭화 시퀀스 (v2 — 측정 챔버/홀딩 챔버 동시 폭기):
+  tank = 본수조 → 측정 챔버(에어스톤)에서 폭기·측정.
+  ref  = 위즈수조 → 홀딩 챔버(에어스톤)에서 폭기 → 측정 챔버로 이송·측정.
+  둘을 단일 ron 창에서 동시 폭기해 시간상수를 맞춰(부피 대칭) 방 CO₂ 과도
+  비대칭을 제거한다. 측정 직전 본수조수로 측정 챔버 KCl 잔막을 헹군다.
+  참조수는 측정 후 위즈수조로 순환 회수(폐기 아님). 프로브는 측정 사이
+  KCl에 소크. tank 먼저, ref 나중(측정 챔버에서 폭기되어 프로브 마름 없음).
+  측정은 수렴 판정(연속 차 < CONV_EPS)으로 반복 — 수렴 횟수는 전극 건강 지표.
+  ※ 널테스트 한정: ref 채우기 전 헹굼 생략. 정상운영(KH 다름) 복귀 시 복원 필수.
 
 dkh.dat 형식 (한 줄에 하나):
   HH ref_pH tank_pH ref_kh tank_kh temp
@@ -24,9 +29,9 @@ from datetime import datetime
 PORT     = 'COM15'
 BAUD     = 9600
 AIR_SECS = 1200         # 탈기 시간(초) — 테스트 시 줄여서 사용
-STABLE_SECS   = 60      # 채움 후 안정화(초) — tank/ref 동일 (타이밍 대칭)
+STABLE_SECS   = 120     # 채움 후 안정화(초) — tank/ref 동일 (타이밍 대칭). 제품 스펙 응답시간 최대 2분
 CONV_INTERVAL = 45      # 수렴 판정 재측정 간격(초)
-CONV_EPS      = 0.005   # 수렴 기준: 연속 측정 pH 차 (노이즈 0.001~0.002의 3~5배)
+CONV_EPS      = 0.002   # 수렴 기준: 연속 측정 pH 차 (노이즈 0.0005~0.002의 1~4배, ≈0.04 dKH)
 CONV_MAX      = 6       # 최대 측정 횟수
 DAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dkh.dat')
 LOG_FILE = r'C:\dkh\measure_kh.log' if os.name == 'nt' else None
@@ -175,15 +180,26 @@ def parse_results(kh_lines):
 # ─────────────────────────────────────────────
 
 def run_measurement(ser):
-    # ── 준비: 수조수 샘플링 (→챔버) ───────────
+    # ── KCl 배출 (프로브 KCl 소크 해제) ──────────
     send(ser, 'airoff', stop_pattern='OFF')
     send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[준비] 수조수 샘플링 (→챔버)")
-    send_motor(ser, 1, 'm1f:80')
-    send(ser, 'airoff', stop_pattern='OFF')
+    print("\n[준비] KCl 배출 (측정 챔버)")
+    send_motor(ser, 3, 'm3b:68')
 
-    # ── 폭기: 저장수조(5L)+챔버 동시, 프로브는 측정컵 KCl 소크 ──
-    print("\n[폭기] 에어 펌프 ON (저장수조+챔버)")
+    # ── tank 측정수 준비: 본수조수로 측정 챔버 KCl 잔막 헹굼 후 채움 ──
+    print("\n[tank] 본수조수로 측정 챔버 헹굼 (KCl 잔막 → 본수조)")
+    send_motor(ser, 1, 'm1f:60')
+    send_motor(ser, 1, 'm1b:72')
+    print("\n[tank] 본수조수 채움 (측정용 → 측정 챔버)")
+    send_motor(ser, 1, 'm1f:60')
+
+    # ── ref 준비: 위즈수조 → 홀딩 챔버 ──
+    print("\n[ref] 참조수 → 홀딩 챔버")
+    send_motor(ser, 4, 'm4f:60')
+
+    # ── 폭기: 측정 챔버(tank) + 홀딩 챔버(ref) 동시 (단일 창 → 시간상수 대칭) ──
+    send(ser, 'airoff', stop_pattern='OFF')
+    print("\n[폭기] 에어 펌프 ON (측정 챔버 tank + 홀딩 챔버 ref 동시)")
     send(ser, 'ron', stop_pattern='참조ON')
 
     print(f"\n[폭기] {AIR_SECS}초 탈기 대기 중...")
@@ -194,37 +210,23 @@ def run_measurement(ser):
 
     send(ser, 'airoff', stop_pattern='OFF')
 
-    # ── tank ──────────────────────────────────
-    send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[tank] KCL 보관액 배출")
-    send_motor(ser, 3, 'm3b:68')
-
-    print("\n[tank] KCL 스윕 (= 측정컵 헹굼)")
-    send_motor(ser, 2, 'm2f:60')
-    send_motor(ser, 2, 'm2b:68')
-
-    print("\n[tank] 수조수 채움")
-    send_motor(ser, 2, 'm2f:60')
-    send(ser, 'airoff', stop_pattern='OFF')
-
+    # ── tank 측정 (측정 챔버 제자리 — 폭기 중 프로브 침지로 마름 없음) ──
     print(f"\n[tank] {STABLE_SECS}초 안정화")
     time.sleep(STABLE_SECS)
     print("\n[tank] 수조수 pH (수렴 판정)")
     tank_n = measure_converged(ser, 'tank')
 
+    # ── tank 배출 → 본수조, ref 이송 (홀딩 → 측정 챔버) ──
     send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[tank] 수조수 배출")
-    send_motor(ser, 2, 'm2b:68')
+    print("\n[tank] 수조수 배출 → 본수조")
+    send_motor(ser, 1, 'm1b:72')
+    # 헹굼 생략: 널테스트라 수조수↔참조수 성분차 극히 작음.
+    # ※ 정상운영(수조 KH ≠ 참조수) 복귀 시 여기에 측정 챔버 헹굼 복원 필수 (tank→ref 캐리오버 방지).
+    print("\n[ref] 홀딩 챔버 참조수 → 측정 챔버")
+    send_motor(ser, 2, 'm2f:60')
 
-    # ── ref: tank 블록과 헹굼·채움·안정화 타이밍 동일 ──
-    print("\n[ref] 참조수 헹굼 (tank 잔막 제거)")
-    send_motor(ser, 4, 'm4f:60')
-    send_motor(ser, 4, 'm4b:68')
-
-    print("\n[ref] 참조수 채움")
-    send_motor(ser, 4, 'm4f:60')
+    # ── ref 측정 ──────────────────────────────
     send(ser, 'airoff', stop_pattern='OFF')
-
     print(f"\n[ref] {STABLE_SECS}초 안정화")
     time.sleep(STABLE_SECS)
     print("\n[ref] 참조수 pH (수렴 판정)")
@@ -233,21 +235,16 @@ def run_measurement(ser):
     print("\n[ref] KH 계산")
     kh_lines = send(ser, 'calkh', stop_pattern='===========', timeout=10)
 
+    # ── ref 회수 (측정 챔버 → 홀딩 → 위즈수조 순환, 폐기 아님) ──
     send(ser, 'ton', stop_pattern='수조ON')
-    print("\n[ref] 참조수 배출")
+    print("\n[정리] 참조수 배출 → 홀딩 → 위즈수조 (순환 회수)")
+    send_motor(ser, 2, 'm2b:68')
     send_motor(ser, 4, 'm4b:68')
 
-    # ── 정리 ──────────────────────────────────
-    print("\n[정리] 챔버수 방출 (KCl 포함 → 본수조 희석)")
-    send_motor(ser, 1, 'm1b:92')
-
-    print("\n[정리] KCL 공급")
+    # ── KCl 공급 (프로브 소크), 종료 — 지속 폭기(terminal ron) 없음 ──
+    print("\n[정리] KCl 공급 (프로브 소크)")
     send_motor(ser, 3, 'm3f:60')
     send(ser, 'airoff', stop_pattern='OFF')
-
-    # 측정 사이 기포기 ON 유지 — 밀폐 참조수 지속 탈기(ΔpH 폭기부족 오프셋 대응)
-    print("\n[정리] 기포기 ON (다음 측정까지 지속 폭기)")
-    send(ser, 'ron', stop_pattern='참조ON')
 
     # ── 파싱 ──────────────────────────────────
     ref_ph, tank_ph, ref_kh, tank_kh, temp = parse_results(kh_lines)
