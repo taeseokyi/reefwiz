@@ -716,17 +716,10 @@ void printStatus() {
             BTPRINTF("동작 잔여:"); BTPRINT(r); BTPRINTLNF("초");
         } else BTPRINTLNF("정지");
     }
-    BTPRINTF("[에어] ");
-    if (air.active) {
-        long r=((long)air.totalEnd-(long)millis())/1000L;
-        if (air.refTurn) BTPRINTF("참조ON"); else BTPRINTF("수조ON");
-        BTPRINTF(" 잔여:"); BTPRINT(r); BTPRINTLNF("초");
-    } else BTPRINTLNF("정지");
-    BTPRINTF("[대기] ");
-    if (waitState.active) {
-        long r=((long)waitState.endTime-(long)millis())/1000L;
-        BTPRINT(r); BTPRINTLNF("초");
-    } else BTPRINTLNF("-");
+    BTPRINTF("[직접] 에어(D12):");
+    if (digitalRead(SOL_REF)) BTPRINTF("ON"); else BTPRINTF("OFF");
+    BTPRINTF(" PWM(D13):");
+    if (digitalRead(SOL_TANK)) BTPRINTLNF("ON"); else BTPRINTLNF("OFF");
     BTPRINTLNF("============");
 }
 
@@ -736,11 +729,9 @@ void printStatus() {
 void printHelp() {
     BTPRINTLNF("=== 명령어 ===");
     BTPRINTLNF("[pH] settime:HH | ref | tank | calkh | calref");
-    BTPRINTLNF("     setref:x | settemp:x | khhist | status");
-    BTPRINTLNF("     help");
+    BTPRINTLNF("     setref:x | settemp:x | khhist | status | help");
     BTPRINTLNF("[보정] enterph | calph | exitph");
     BTPRINTLNF("[모터] m1f:초 m1b:초 m1s (m2~m4동일)");
-    BTPRINTLNF("[에어] air:총초:주기초 | airoff");
-    BTPRINTLNF("[대기] wait:초");
+    BTPRINTLNF("[직접] ron/roff(에어) ton/toff(PWM) | airoff");
     BTPRINTLNF("=============");
 }
