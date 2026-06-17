@@ -614,6 +614,7 @@ void handleCommand() {
     }
 
     // 일반
+    if (strcmp(cmdL,"stop")==0)     { motorAllStop(); stopAir(); BTPRINTLNF("[STOP] 전체 정지(모터+핀)"); return; }
     if (strcmp(cmdL,"status")==0)   { printStatus(); return; }
     if (strcmp(cmdL,"khhist")==0)   { printKHHist(); return; }
     if (strcmp(cmdL,"help")==0) { printHelp(); return; }
@@ -660,5 +661,6 @@ void printHelp() {
     BTPRINTLNF("[보정] enterph | calph | exitph");
     BTPRINTLNF("[모터] m1f:초 m1b:초 m1s (m2~m4동일)");
     BTPRINTLNF("[직접] ron/roff(에어) ton/toff(PWM) | airoff");
+    BTPRINTLNF("[정지] m1s~m4s(개별) | stop(전체 모터+핀)");
     BTPRINTLNF("=============");
 }
