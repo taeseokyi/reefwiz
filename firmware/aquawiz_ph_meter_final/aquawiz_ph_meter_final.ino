@@ -587,9 +587,11 @@ void executeOneCmd(const char* rawCmd) {
     // 대기
     if (strncmp(cmd,"wait:",5)==0) { startWait(atol(cmd+5)); return; }
 
-    // 솔레노이드 직접
-    if (strcmp(cmd,"ron")==0)  { digitalWrite(SOL_REF,  HIGH); BTPRINTLNF("[SOL] 참조ON"); }
+    // 솔레노이드 직접 (ron/ton=각 핀 ON, roff/toff=각 핀 OFF, airoff=둘 다 OFF)
+    if (strcmp(cmd,"ron")==0)       { digitalWrite(SOL_REF,  HIGH); BTPRINTLNF("[SOL] 참조ON"); }
+    else if (strcmp(cmd,"roff")==0) { digitalWrite(SOL_REF,  LOW);  BTPRINTLNF("[SOL] 참조OFF"); }
     else if (strcmp(cmd,"ton")==0)  { digitalWrite(SOL_TANK, HIGH); BTPRINTLNF("[SOL] 수조ON"); }
+    else if (strcmp(cmd,"toff")==0) { digitalWrite(SOL_TANK, LOW);  BTPRINTLNF("[SOL] 수조OFF"); }
     else { BTPRINTF("[?] "); BTPRINTLN(cmd); }
     
 }
