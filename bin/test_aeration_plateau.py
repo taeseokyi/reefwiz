@@ -12,7 +12,7 @@ measure_kh_once 의 폭기/재폭기 시간을 정하는 근거.
 
 실행:  python test_aeration_plateau.py [COM포트]
        (WSL에서 Windows파이썬: /mnt/c/dkh/python313/python.exe -X utf8 test_aeration_plateau.py)
-중단:  Ctrl+C (안전하게 airoff 후 종료)
+중단:  Ctrl+C — 정리 단계(시료 배출 + KCl 용액 채움)까지 수행 후 종료
 """
 
 import serial
@@ -25,13 +25,12 @@ from datetime import datetime
 PORT = 'COM15'
 BAUD = 9600
 
-DO_PREP       = True    # True면 KCl 배출 후 본수조수로 측정챔버 채움. False면 챔버 현 상태로 측정
-FILL_SECS     = 70      # 본수조수 채움(긴 호스 +10s, measure_kh_once 와 동일)
+DO_PREP       = True    # True면 KCl 배출 후 측정수 채움(테스트라 헹굼·기포청소 생략). False면 챔버 현 상태로 측정
+FILL_SECS     = 70      # 본수조수 측정용 채움(긴 호스 +10s, measure_kh_once V3 와 동일)
 LOG_INTERVAL  = 30      # pH 재측정 간격(초)
 MAX_DURATION  = 3600    # 최대 폭기·기록 시간(초)
 PLATEAU_N     = 4       # 연속 N회가 EPS 이내면 평형 판정
 PLATEAU_EPS   = 0.001   # 평형 기준(pH, 양자화 1 LSB)
-CLEANUP_KCL   = True    # 종료 시 시료 배출 후 KCl 공급(프로브 소크 복원)
 
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'aeration_plateau.csv')
 
@@ -81,6 +80,21 @@ def measure_ph(ser):
     return ph, v, t
 
 
+def cleanup(ser):
+    """모든 종료 경로(정상/Ctrl+C/오류)에서 호출 — 시료 배출 후 KCl 용액 채움(프로브 소크), airoff.
+    프로브를 절대 KCl 없이 두지 않기 위함."""
+    try:
+        send(ser, 'airoff', stop='OFF')
+        send(ser, 'ton', stop='수조ON')
+        print("\n[정리] 시료 배출 → 본수조")
+        motor(ser, 1, 'm1b:82')
+        print("[정리] KCl 용액 공급(프로브 소크 복원)")
+        motor(ser, 3, 'm3f:60')
+        send(ser, 'airoff', stop='OFF')
+    except Exception as e:
+        print(f"[정리 오류] {e} — KCl 채움 실패, 수동 확인 필요!")
+
+
 def main():
     port = sys.argv[1] if len(sys.argv) > 1 else PORT
     print(f"폭기 평형 테스트 — {port} @ {BAUD}baud, 간격 {LOG_INTERVAL}s, 최대 {MAX_DURATION}s")
@@ -88,77 +102,64 @@ def main():
     print(f"CSV: {CSV_FILE}\n")
 
     with serial.Serial(port, BAUD, timeout=1) as ser:
-        time.sleep(2)
-        ser.reset_input_buffer()
-
-        # ── 준비: KCl 배출 → 본수조수 채움 (액체 이동 전 airoff) ──
-        if DO_PREP:
-            send(ser, 'airoff', stop='OFF')
-            send(ser, 'ton', stop='수조ON')
-            print("[준비] KCl 배출")
-            motor(ser, 3, 'm3b:68')
-            print("[준비] 본수조수 채움")
-            motor(ser, 1, f'm1f:{FILL_SECS}')
-
-        # ── 폭기 ON, 시간-pH 기록 ──
-        send(ser, 'airoff', stop='OFF')
-        send(ser, 'ron', stop='참조ON')
-        print("[폭기] ON — 시간별 pH 기록 시작\n")
-        print(f"{'t(s)':>6} {'pH':>7} {'ΔpH':>7} {'V(mV)':>9} {'T':>5}")
-
-        with open(CSV_FILE, 'w') as f:
-            f.write("elapsed_s,pH,dPH,V_mV,T_C,clock\n")
-
-        t0 = time.time()
-        prev = None
-        stable = 0
         plateaued = False
-        while True:
-            elapsed = int(time.time() - t0)
-            ph, v, t = measure_ph(ser)
-            if ph is None:
-                print(f"{elapsed:6d}  [측정 실패]")
-            else:
-                d = (ph - prev) if prev is not None else 0.0
-                print(f"{elapsed:6d} {ph:7.3f} {d:+7.3f} {v:9.3f} {t:5.1f}")
-                with open(CSV_FILE, 'a') as f:
-                    f.write(f"{elapsed},{ph:.3f},{d:+.3f},{v:.3f},{t:.1f},"
-                            f"{datetime.now():%H:%M:%S}\n")
-                if prev is not None and abs(d) <= PLATEAU_EPS:
-                    stable += 1
-                else:
-                    stable = 0
-                prev = ph
-                if stable >= PLATEAU_N - 1:
-                    print(f"\n[평형] 연속 {PLATEAU_N}회 Δ≤{PLATEAU_EPS} → pH 평탄(완전 폭기 도달) "
-                          f"@ {elapsed}s, pH={ph:.3f}")
-                    plateaued = True
-                    break
-            if time.time() - t0 >= MAX_DURATION:
-                print(f"\n[종료] 최대 {MAX_DURATION}s 도달 — 평형 미확정(아직 움직임)")
-                break
-            time.sleep(LOG_INTERVAL)
+        try:
+            time.sleep(2)
+            ser.reset_input_buffer()
 
-        # ── 정리: 시료 배출 → KCl 공급(소크 복원) ──
-        if CLEANUP_KCL:
+            # ── 준비: KCl 배출 → 측정수 채움 (테스트라 헹굼·기포청소 생략) ──
+            if DO_PREP:
+                send(ser, 'airoff', stop='OFF')
+                send(ser, 'ton', stop='수조ON')
+                print("[준비] KCl 배출")
+                motor(ser, 3, 'm3b:68')
+                print("[준비] 본수조수 채움(측정용)")
+                motor(ser, 1, f'm1f:{FILL_SECS}')
+
+            # ── 폭기 ON, 시간-pH 기록 ──
             send(ser, 'airoff', stop='OFF')
-            send(ser, 'ton', stop='수조ON')
-            print("\n[정리] 시료 배출 → 본수조")
-            motor(ser, 1, 'm1b:82')
-            print("[정리] KCl 공급(프로브 소크)")
-            motor(ser, 3, 'm3f:60')
-        send(ser, 'airoff', stop='OFF')
+            send(ser, 'ron', stop='참조ON')
+            print("[폭기] ON — 시간별 pH 기록 시작\n")
+            print(f"{'t(s)':>6} {'pH':>7} {'ΔpH':>7} {'V(mV)':>9} {'T':>5}")
+
+            with open(CSV_FILE, 'w') as f:
+                f.write("elapsed_s,pH,dPH,V_mV,T_C,clock\n")
+
+            t0 = time.time()
+            prev = None
+            stable = 0
+            while True:
+                elapsed = int(time.time() - t0)
+                ph, v, t = measure_ph(ser)
+                if ph is None:
+                    print(f"{elapsed:6d}  [측정 실패]")
+                else:
+                    d = (ph - prev) if prev is not None else 0.0
+                    print(f"{elapsed:6d} {ph:7.3f} {d:+7.3f} {v:9.3f} {t:5.1f}")
+                    with open(CSV_FILE, 'a') as f:
+                        f.write(f"{elapsed},{ph:.3f},{d:+.3f},{v:.3f},{t:.1f},"
+                                f"{datetime.now():%H:%M:%S}\n")
+                    if prev is not None and abs(d) <= PLATEAU_EPS:
+                        stable += 1
+                    else:
+                        stable = 0
+                    prev = ph
+                    if stable >= PLATEAU_N - 1:
+                        print(f"\n[평형] 연속 {PLATEAU_N}회 Δ≤{PLATEAU_EPS} → pH 평탄(완전 폭기 도달) "
+                              f"@ {elapsed}s, pH={ph:.3f}")
+                        plateaued = True
+                        break
+                if time.time() - t0 >= MAX_DURATION:
+                    print(f"\n[종료] 최대 {MAX_DURATION}s 도달 — 평형 미확정(아직 움직임)")
+                    break
+                time.sleep(LOG_INTERVAL)
+        except KeyboardInterrupt:
+            print("\n[중단] 사용자 인터럽트 — 정리 후 종료")
+        finally:
+            cleanup(ser)   # ★어떤 경로로 끝나든(정상/Ctrl+C/오류) KCl 용액 채움(프로브 소크)
+
         print(f"\n완료. CSV 저장: {CSV_FILE}  (평형도달={'O' if plateaued else 'X'})")
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n[중단] 사용자 인터럽트 — airoff 시도")
-        try:
-            with serial.Serial(sys.argv[1] if len(sys.argv) > 1 else PORT, BAUD, timeout=1) as s:
-                time.sleep(1); s.write(b'airoff\r\n')
-        except Exception:
-            pass
-        sys.exit(0)
+    main()
