@@ -73,6 +73,11 @@
   </g>
   <text x="480" y="230" text-anchor="middle" font-size="12" font-weight="bold" fill="#2E7D32">위즈 탱크 (락앤락 김치통 5L)</text>
 
+  <!-- ★밀폐 공통 헤드스페이스 (sealed common headspace) -->
+  <rect x="280" y="183" width="400" height="255" rx="12" fill="none" stroke="#8E24AA" stroke-width="2" stroke-dasharray="8,5"/>
+  <rect x="378" y="166" width="204" height="20" rx="5" fill="#F3E5F5" stroke="#8E24AA" stroke-width="1.2"/>
+  <text x="480" y="180" text-anchor="middle" font-size="10" font-weight="bold" fill="#6A1B9A">★밀폐 공통 헤드스페이스 (필수)</text>
+
   <!-- ===== 펌프 + 분배기 ===== -->
   <g filter="url(#sh)">
     <rect x="260" y="55" width="310" height="58" rx="6" fill="#ECEFF1" stroke="#78909C" stroke-width="2"/>
@@ -204,7 +209,7 @@
   <line x1="42" y1="632" x2="68" y2="632" stroke="#2E7D32" stroke-width="2" opacity="0.7"/>
   <text x="75" y="636" font-size="8" fill="#555">M4: 위즈 탱크(참조수) ↔ pH 비이커</text>
   <line x1="42" y1="650" x2="68" y2="650" stroke="#90CAF9" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="75" y="654" font-size="8" fill="#555">에어 호스 (기포기 → SOL1 → SOL2 직렬)</text>
+  <text x="75" y="654" font-size="8" fill="#555">에어 호스 (D12 ron — 참조수·수조수 동시 폭기)</text>
 
   <!-- 공식 -->
   <rect x="410" y="545" width="340" height="80" rx="6" fill="#263238" opacity="0.95"/>

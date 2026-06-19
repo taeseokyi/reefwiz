@@ -38,9 +38,15 @@
   <circle cx="90" cy="360" r="6" fill="#AED581" opacity="0.6"/>
   <circle cx="120" cy="355" r="10" fill="#CE93D8" opacity="0.5"/>
 
+  <!-- ★밀폐 공통 헤드스페이스 (sealed common headspace) -->
+  <rect x="298" y="150" width="484" height="424" rx="16" fill="none" stroke="#8E24AA" stroke-width="2.5" stroke-dasharray="9,5"/>
+  <rect x="300" y="160" width="470" height="20" rx="6" fill="#CE93D8" stroke="#8E24AA" stroke-width="1.5"/>
+  <text x="535" y="175" text-anchor="middle" font-size="11" font-weight="bold" fill="#4A148C">밀폐 뚜껑 — 외기 차단</text>
+  <text x="535" y="144" text-anchor="middle" font-size="13" font-weight="bold" fill="#6A1B9A">★밀폐 공통 헤드스페이스 — ref·tank 같은 공기 공유 (필수)</text>
+
   <!-- Wiz Tank (reference water container) -->
-  <rect x="310" y="180" width="460" height="380" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2.5" stroke-dasharray="none"/>
-  <text x="540" y="205" text-anchor="middle" font-size="16" font-weight="bold" fill="#2E7D32">위즈 탱크 (참조 해수 5L)</text>
+  <rect x="310" y="186" width="460" height="374" rx="12" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2.5" stroke-dasharray="none"/>
+  <text x="540" y="208" text-anchor="middle" font-size="16" font-weight="bold" fill="#2E7D32">위즈 탱크 (참조 해수 5L)</text>
 
   <!-- Reference water fill -->
   <rect x="320" y="340" width="440" height="210" rx="8" fill="url(#water)" opacity="0.5"/>
@@ -110,11 +116,11 @@
 
   <!-- Air pump unit -->
   <rect x="810" y="400" width="170" height="90" rx="8" fill="#E1F5FE" stroke="#0277BD" stroke-width="1.5"/>
-  <text x="895" y="420" text-anchor="middle" font-size="13" font-weight="bold" fill="#0277BD">기포기</text>
-  <text x="895" y="438" text-anchor="middle" font-size="10" fill="#0277BD">3-way 솔레노이드 직렬</text>
-  <text x="850" y="455" font-size="9" fill="#0277BD">기포기 → SOL1 → SOL2</text>
-  <text x="850" y="470" font-size="9" fill="#0277BD">SOL1 ON → pH 비이커</text>
-  <text x="850" y="485" font-size="9" fill="#0277BD">SOL1 OFF → SOL2 → 수조물</text>
+  <text x="895" y="420" text-anchor="middle" font-size="13" font-weight="bold" fill="#0277BD">에어 펌프 (D12 ron)</text>
+  <text x="895" y="438" text-anchor="middle" font-size="10" fill="#0277BD">참조수·수조수 동시 폭기</text>
+  <text x="850" y="455" font-size="9" fill="#0277BD">Air1(ref) + Air2(tank) 동시 ON</text>
+  <text x="850" y="470" font-size="9" fill="#0277BD">흡입 = 밀폐 헤드스페이스 폐루프</text>
+  <text x="850" y="485" font-size="9" fill="#0277BD">(외기 아님 → 같은 pCO₂ 보장)</text>
 
   <!-- === PUMP LINES === -->
 
@@ -197,7 +203,7 @@
   <!-- 폭기 -->
   <text x="55" y="653" font-size="10" font-weight="bold" fill="#0288D1">폭기</text>
   <rect x="85" y="641" width="400" height="18" rx="3" fill="#E1F5FE" opacity="0.5"/>
-  <text x="95" y="653" font-size="11" fill="#333" font-weight="bold">Air1(참조수) + Air2(수조수) 동시 탈기 30분 → CO₂ 평형</text>
+  <text x="95" y="653" font-size="11" fill="#333" font-weight="bold">Air1(참조수) + Air2(수조수) 동시 폭기 → tank·ref 각각 평탄(평형)까지 적응</text>
 
   <!-- 측정 -->
   <text x="55" y="678" font-size="10" font-weight="bold" fill="#C62828">측정</text>
@@ -224,6 +230,6 @@
   <rect x="540" y="690" width="12" height="12" rx="2" fill="#0288D1" opacity="0.3"/>
   <text x="560" y="700" font-size="10" fill="#666">폭기: 참조수(pH 비이커) + 수조수(수조물 비이커) 동시</text>
 
-  <rect x="100" y="748" width="800" height="25" rx="4" fill="#263238"/>
-  <text x="500" y="766" text-anchor="middle" font-size="12" fill="#80CBC4" font-weight="bold" font-family="monospace, 'Malgun Gothic'">seq:settime:14|m3b:5|m1f:30|m4f:10|air:1800:5|ref|m4b:10|m2f:10|tank|calckh|m2b:10|m1b:30|m3f:5</text>
+  <rect x="80" y="748" width="840" height="25" rx="4" fill="#263238"/>
+  <text x="500" y="766" text-anchor="middle" font-size="11" fill="#80CBC4" font-weight="bold" font-family="monospace, 'Malgun Gothic'">PC측 V4: 준비 → [A] ron 동시폭기·tank 평탄까지 → 전이 → [B] ref 평탄까지 → calkh → 정리 (펌웨어 seq/air 명령 제거됨)</text>
 </svg>
