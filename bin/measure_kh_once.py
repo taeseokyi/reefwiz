@@ -4,8 +4,9 @@ AquaWiz KH 1회 측정 (V4 — 평형(plateau) 추종 측정)
 HC-06 블루투스 시리얼로 한 번만 측정하고 dkh.dat 에 기록 후 종료.
 
 V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
-  - tank·ref 를 폭기 유지(ron)한 채 반복 측정, **최근 FLAT_N개 정수 milli-pH 의 max−min ≤ FLAT_SPAN_MPH**
-    면 평형 도달로 보고 종료(윈도우 span; 정수 비교라 float 지터 없고 느린 크리프에 조기 latch 안 됨).
+  - tank·ref 를 폭기 유지(ron)한 채 반복 측정, **최근 FLAT_SPAN_N개 max−min ≤ FLAT_SPAN_MPH(흔들림)
+    AND 최근 FLAT_NET_N개 양끝차 ≤ FLAT_NET_MPH(드리프트)** 면 평형 도달로 보고 종료. ★B1: net 룩백을
+    span보다 길게(8 vs 4) 둬 느린 단조 꼬리 조기 latch 차단(정수 비교라 float 지터 없음).
     → 격차(시작 CO₂)에 자동 적응(평탄할 때까지 측정).
     차동에서 ref·tank 가 같은 평형(실내공기 pCO₂)에 도달 → 방 CO₂ 상쇄.
   - ★tank 먼저 + 5L 위즈수조 동시 폭기(2026-06-20): m1=본수조↔홀딩, m2=홀딩↔측정챔버,
@@ -43,10 +44,11 @@ from datetime import datetime
 PORT     = 'COM9'
 BAUD     = 9600
 
-# ── 평형(평탄) 판정 — measure_until_flat (정수 milli-pH 윈도우 span; float 비교 지터 회피) ──
-FLAT_N         = 4       # 최근 N개 읽기로 판정
-FLAT_SPAN_MPH  = 2       # 최근 N개 max−min ≤ 2 mpH (흔들림 폭). 정수 비교라 float 지터 없음
-FLAT_NET_MPH   = 1       # ★net 게이트(2026-06-20 라이브 검증): 최근 N개 양끝 |win[-1]-win[0]| ≤ 1 mpH (단조 드리프트 꼬리 조기 latch 차단)
+# ── 평형(평탄) 판정 — measure_until_flat (정수 milli-pH 윈도우; float 비교 지터 회피) ──
+FLAT_SPAN_N    = 4       # 흔들림(span) 판정 윈도우 — 최근 N개
+FLAT_SPAN_MPH  = 2       # 최근 FLAT_SPAN_N개 max−min ≤ 2 mpH (흔들림 폭). 정수 비교라 float 지터 없음
+FLAT_NET_N     = 8       # ★B1(2026-06-20): 드리프트(net) 판정 룩백 — span보다 긴 창(≈5분)
+FLAT_NET_MPH   = 1       # 최근 FLAT_NET_N개 양끝 |win[-1]-win[0]| ≤ 1 mpH. 짧은 4점은 느린 단조 꼬리서 net=1 위장(20:29 tank 10회 조기 latch) → 8점으로 차단
 MEAS_INTERVAL  = 30      # 측정 간 간격(초) — 폭기 지속
 # ── ★무한 대기 방지 상한 ──
 PHASE_MAX_SECS = 2400    # phase(tank/ref)별 최대 측정 시간(초). 초과 시 마지막값+경고
@@ -176,14 +178,16 @@ def parse_ph(lines, label):
 
 def measure_until_flat(ser, what):
     """폭기 켠 채(ron, 호출자가 ON 상태로 진입) what('tank'/'ref')를 반복 측정.
-    최근 FLAT_N개 정수 milli-pH 의 (max−min) ≤ FLAT_SPAN_MPH 면 평형(평탄)으로 보고 종료(윈도우 span).
+    평형 판정 = 최근 FLAT_SPAN_N개 (max−min) ≤ FLAT_SPAN_MPH (흔들림) AND
+                최근 FLAT_NET_N개 양끝차 ≤ FLAT_NET_MPH (드리프트).
+    ★B1: net 룩백(FLAT_NET_N)을 span(FLAT_SPAN_N)보다 길게 둬 느린 단조 꼬리 조기 latch 차단.
     펌웨어가 마지막 측정값을 refPH/tankPH 에 보관하므로 최종(평탄) 값이 calkh 에 쓰인다.
 
     ★무한 대기 방지: 경과 PHASE_MAX_SECS 또는 측정 MEAS_MAX 회 초과 시 마지막값+경고로 종료.
       연속 파싱 실패 FAIL_MAX 회 초과 시 실패(ph=None) 반환.
     반환: (ph, n_reads, flat_ok). ph=None 이면 측정 실패(응답 없음/계속 실패)."""
     label = '수조수' if what == 'tank' else '참조수'
-    win = []          # 최근 FLAT_N개 정수 milli-pH
+    win = []          # 최근 FLAT_NET_N개 정수 milli-pH (span은 뒤 FLAT_SPAN_N개로 판정)
     last_ph = None
     fails = 0
     t0 = time.time()
@@ -204,17 +208,18 @@ def measure_until_flat(ser, what):
             last_ph = ph
             elapsed = int(time.time() - t0)
             win.append(round(ph * 1000))         # 정수 milli-pH (float 비교 지터 회피)
-            if len(win) > FLAT_N:
+            if len(win) > FLAT_NET_N:
                 win.pop(0)
-            if len(win) >= FLAT_N:
-                span = max(win) - min(win)       # 흔들림 폭 (정수 mpH)
-                net  = abs(win[-1] - win[0])      # ★양끝 차 = 방향성 드리프트 (정수 mpH)
-                print(f"    [{what}] {n}회 pH:{ph:.3f} 최근{FLAT_N}span:{span}mpH net:{net}mpH ({elapsed}s)")
-                if span <= FLAT_SPAN_MPH and net <= FLAT_NET_MPH:
-                    print(f"    [평탄] {what} {n}회 — span={span}≤{FLAT_SPAN_MPH} AND net={net}≤{FLAT_NET_MPH} → 평형 (pH {ph:.3f})")
+            if len(win) >= FLAT_SPAN_N:
+                span = max(win[-FLAT_SPAN_N:]) - min(win[-FLAT_SPAN_N:])           # 최근 FLAT_SPAN_N개 흔들림 폭
+                net  = abs(win[-1] - win[0]) if len(win) >= FLAT_NET_N else None    # ★최근 FLAT_NET_N개 양끝차=드리프트
+                netstr = f"{net}" if net is not None else f"-({len(win)}/{FLAT_NET_N})"
+                print(f"    [{what}] {n}회 pH:{ph:.3f} span{FLAT_SPAN_N}:{span}mpH net{FLAT_NET_N}:{netstr}mpH ({elapsed}s)")
+                if span <= FLAT_SPAN_MPH and (net is not None) and net <= FLAT_NET_MPH:
+                    print(f"    [평탄] {what} {n}회 — span{FLAT_SPAN_N}={span}≤{FLAT_SPAN_MPH} AND net{FLAT_NET_N}={net}≤{FLAT_NET_MPH} → 평형 (pH {ph:.3f})")
                     return ph, n, True
             else:
-                print(f"    [{what}] {n}회 pH:{ph:.3f} (윈도우 {len(win)}/{FLAT_N}, {elapsed}s)")
+                print(f"    [{what}] {n}회 pH:{ph:.3f} (윈도우 {len(win)}/{FLAT_SPAN_N}, {elapsed}s)")
 
         # ── 무한 대기 방지 ──
         if time.time() - t0 >= PHASE_MAX_SECS:
