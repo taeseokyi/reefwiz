@@ -8,10 +8,12 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
     면 평형 도달로 보고 종료(윈도우 span; 정수 비교라 float 지터 없고 느린 크리프에 조기 latch 안 됨).
     → 격차(시작 CO₂)에 자동 적응(평탄할 때까지 측정).
     차동에서 ref·tank 가 같은 평형(실내공기 pCO₂)에 도달 → 방 CO₂ 상쇄.
-  - [A] tank·ref 동시 폭기 + tank 평탄까지 측정 (이때 ref 는 홀딩 챔버서 함께 폭기 = co-aeration).
-    [B] tank 완전 배출(오염방지, 단축불가) → ref 측정챔버 이송 → 폭기 + 평탄까지 측정
-       (co-aeration 덕에 평형 근처라 빨리 끝남). 전이(A→B)는 무대기로 최대한 조임
-       (t2−t1 최소화 = 측정 사이 방 CO₂ 표류 잔류 최소화).
+  - ★ref 먼저 측정(2026-06-20, 호스 스왑): m4=참조수(5L)↔측정챔버, m1=본수조↔홀딩챔버
+    (m2=홀딩↔측정챔버, m3=KCl↔측정챔버 불변).
+    [A] ref(5L 물=앵커 천장 그 자체)를 측정챔버서 폭기+평탄까지 측정 → 천장 확정 + 헤드스페이스 웜업.
+        이 측정 시간 동안 tank 는 홀딩서 공통 헤드스페이스와 수면교환(head-start).
+    [B] ref 회수(측정챔버→5L) → tank 이송(홀딩→측정챔버) → 폭기+평탄까지 측정
+        ([A]서 천장이 확립돼 tank 가 같은 천장에 빠르게 평형 → 15시 순서 아티팩트 제거).
   - ★무한 대기 방지: phase 별 PHASE_MAX_SECS·MEAS_MAX·연속실패 FAIL_MAX 상한,
     시리얼 read 타임아웃. 평탄 미도달 시 마지막값+경고로 종료(행 안 함).
   - ★규칙: 액체 이동(mXf/mXb) 직전 airoff. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
@@ -261,7 +263,11 @@ def _safe_cleanup(ser):
     for cmd, stop in (('airoff', 'OFF'), ('ton', '수조ON')):
         try: send(ser, cmd, stop_pattern=stop, timeout=5)
         except Exception: pass
-    try: send_motor(ser, 1, 'm1b:82')   # 측정챔버 배출(오염방지 완전배출)
+    # ★호스 스왑 후 측정챔버 배출 경로 = m2(측정챔버→홀딩) → m1(홀딩→본수조).
+    #   (m1 단독은 이제 홀딩↔본수조라 측정챔버를 못 비움 → KCl 오버플로 방지 위해 m2 먼저)
+    try: send_motor(ser, 2, 'm2b:68')   # 측정챔버 → 홀딩 (비우기)
+    except Exception: pass
+    try: send_motor(ser, 1, 'm1b:82')   # 홀딩 → 본수조 (배출)
     except Exception: pass
     kcl_ok = False
     try:
@@ -281,58 +287,56 @@ def _safe_cleanup(ser):
 def run_measurement(ser):
     completed = False
     try:
-        # ── 준비: KCl 배출 → 측정수 채움 ──
-        #    ★KCl 잔막 헹굼/기포청소 제거(사용자 2026-06-20): KCl 은 중성이고, 측정 중 폭기가
-        #      잔막을 제거하며, 차동(tank·ref 동일 챔버/프로브)이라 잔류 효과는 공통모드로 상쇄.
-        #    ★ref→홀딩 이동도 prep 에서 제거 → tank 측정 후 전이로 이동(5L 평형 후 떠오기 위함).
+        # ── 준비: KCl 배출 → ref·tank 각 챔버로 이동 (호스 스왑 후 배관) ──
+        #    ★호스 스왑(사용자 2026-06-20): m1=본수조↔홀딩챔버, m4=참조수(5L)↔측정챔버 로 변경
+        #      (m2=홀딩↔측정챔버, m3=KCl↔측정챔버 는 불변).
+        #    ★측정 순서 = ref 먼저(천장 확정+헤드스페이스 웜업) → tank 나중(확립된 천장에 평형).
+        #      tank 는 홀딩서 ref 측정 시간 동안 공통 헤드스페이스와 수면교환 head-start.
         send(ser, 'airoff', stop_pattern='OFF')
         send(ser, 'ton', stop_pattern='수조ON')
         print("\n[준비] KCl 배출 (측정 챔버)")
         send_motor(ser, 3, 'm3b:68')
-        print("\n[tank] 본수조수 채움 (측정용 → 측정 챔버)")
+        print("\n[ref] 참조수 5L → 측정 챔버 (m4, 호스 스왑)")
+        send_motor(ser, 4, 'm4f:60')
+        print("\n[tank] 본수조수 → 홀딩 챔버 (m1, 호스 스왑; 대기 중 수면교환 head-start)")
         send_motor(ser, 1, 'm1f:70')
 
-        # ── [A] 측정챔버(tank) + 5L 위즈수조(앵커) 동시 폭기 + tank 평탄까지 측정 ──
-        #    ★5L 위즈수조 폭기가 헤드스페이스 pCO₂를 강하게 앵커링(5L 버퍼≫30mL) → tank·ref 공통 기준.
-        #    (ref 는 이 폭기로 5L이 평형 도달한 *뒤*, tank 측정 직후 떠온다 — 아래 전이. 에어스톤은 홀딩→5L 이전.)
+        # ── [A] 폭기 ON (측정챔버 ref + 5L 위즈수조 앵커) — ref 평탄까지 측정 ──
+        #    ref=5L 물=앵커 천장 그 자체라 빠르게 천장 확정. 이 측정 시간이 헤드스페이스 웜업.
         send(ser, 'airoff', stop_pattern='OFF')
-        print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 앵커 동시) — tank 평탄까지 측정")
+        print("\n[폭기] ON (측정챔버 ref + 5L 위즈수조 앵커) — ref 평탄까지 측정")
         send(ser, 'ron', stop_pattern='참조ON')
-        tank_ph, tank_n, tank_flat = measure_until_flat(ser, 'tank')
-        if tank_ph is None:
-            raise RuntimeError("tank 측정 실패(응답 없음)")
-
-        # ── 전이: tank 완전배출 → ref 를 *지금* 5L서 떠와 측정챔버로 ──
-        #    ★tank 측정 내내 5L 위즈수조가 폭기·평형됐으므로, 그 직후 ref 를 떠야 평형 근처 참조수 사용.
-        #    (홀딩서 폭기 없이 대기시킬 이유 없음 → ref 이동을 prep 가 아니라 tank 측정 후로 옮김.)
-        send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff
-        send(ser, 'ton', stop_pattern='수조ON')
-        print("\n[tank] 수조수 완전 배출 → 본수조 (오염방지, 단축 불가)")
-        send_motor(ser, 1, 'm1b:82')
-        print("\n[ref] 참조수 5L → 홀딩 (tank 측정 중 5L 폭기로 평형 도달)")
-        send_motor(ser, 4, 'm4f:60')
-        print("\n[ref] 홀딩 → 측정 챔버")
-        send_motor(ser, 2, 'm2f:60')
-
-        # ── [B] ref 폭기 + 평탄(평형)까지 측정 (헤드스페이스가 5L 위즈수조 폭기로 앵커링돼 있어
-        #    tank 와 같은 pCO₂로 빠르게 수렴. ref=5L 물이라 평형 근처서 시작 → 빨리). net 게이트로 진짜 평탄까지. ──
-        send(ser, 'airoff', stop_pattern='OFF')
-        send(ser, 'ron', stop_pattern='참조ON')
-        print("\n[폭기] ON — ref 평탄까지 측정 (측정챔버 + 5L 위즈수조 앵커)")
         ref_ph, ref_n, ref_flat = measure_until_flat(ser, 'ref')
         if ref_ph is None:
             raise RuntimeError("ref 측정 실패(응답 없음)")
-        send(ser, 'airoff', stop_pattern='OFF')   # ★에어=측정 중에만: ref 측정 종료 즉시 OFF → 이후 calkh·정리 이동은 전부 에어 OFF(액체 이동 규칙)
+
+        # ── 전이: 기포기 OFF → ref 회수(측정챔버→5L) → tank 이송(홀딩→측정챔버) ──
+        send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff (기포기 off)
+        send(ser, 'ton', stop_pattern='수조ON')
+        print("\n[ref] 참조수 측정챔버 → 5L 위즈수조 회수 (m4 역방향)")
+        send_motor(ser, 4, 'm4b:68')
+        print("\n[tank] 홀딩 → 측정 챔버 (m2)")
+        send_motor(ser, 2, 'm2f:60')
+
+        # ── [B] 폭기 ON (측정챔버 tank + 5L 위즈수조 앵커) — tank 평탄까지 측정 ──
+        #    [A]서 헤드스페이스 천장이 확립됐고 tank 는 홀딩서 head-start → 같은 천장에 빠르게 평형(순서 아티팩트 제거).
+        send(ser, 'airoff', stop_pattern='OFF')
+        send(ser, 'ron', stop_pattern='참조ON')
+        print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 앵커) — tank 평탄까지 측정")
+        tank_ph, tank_n, tank_flat = measure_until_flat(ser, 'tank')
+        if tank_ph is None:
+            raise RuntimeError("tank 측정 실패(응답 없음)")
+        send(ser, 'airoff', stop_pattern='OFF')   # ★측정 종료 즉시 OFF → 이후 calkh·정리 이동은 전부 에어 OFF(액체 이동 규칙)
 
         # ── KH 계산 (펌웨어 저장 refPH/tankPH = 각 phase 마지막 평탄값) ──
-        print("\n[ref] KH 계산")
+        print("\n[KH] 계산")
         kh_lines = send(ser, 'calkh', stop_pattern='===========', timeout=10)
 
-        # ── 정상 정리: ref 회수 → KCl 소크 ──
+        # ── 정상 정리: tank 회수(측정챔버→홀딩→본수조) → KCl 소크 ──
         send(ser, 'ton', stop_pattern='수조ON')
-        print("\n[정리] 참조수 배출 → 홀딩 → 위즈수조 (순환 회수)")
+        print("\n[정리] 수조수 배출 → 홀딩 → 본수조 (m2 역방향 → m1 역방향)")
         send_motor(ser, 2, 'm2b:68')
-        send_motor(ser, 4, 'm4b:68')
+        send_motor(ser, 1, 'm1b:82')
         print("\n[정리] KCl 공급 (프로브 소크)")
         kcl_lines = send_motor(ser, 3, 'm3f:60')
         send(ser, 'airoff', stop_pattern='OFF')
