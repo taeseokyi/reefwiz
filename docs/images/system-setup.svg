@@ -65,12 +65,6 @@
   <text x="395" y="320" text-anchor="middle" font-size="12" font-weight="bold" fill="#1976D2">비이커</text>
   <text x="395" y="340" text-anchor="middle" font-size="10" fill="#777">200ml</text>
 
-  <!-- Air2 bubble in 수조물 비이커 -->
-  <circle cx="370" cy="390" r="3" fill="#90CAF9" opacity="0.7"/>
-  <circle cx="380" cy="380" r="2.5" fill="#90CAF9" opacity="0.6"/>
-  <circle cx="375" cy="370" r="2" fill="#90CAF9" opacity="0.5"/>
-  <text x="395" y="425" text-anchor="middle" font-size="9" fill="#1976D2" font-weight="bold">Air2</text>
-
   <!-- Beaker 2: pH 측정 비이커 -->
   <rect x="490" y="280" width="110" height="150" rx="6" fill="white" stroke="#D32F2F" stroke-width="1.5"/>
   <rect x="495" y="350" width="100" height="75" rx="3" fill="url(#water)"/>
@@ -84,11 +78,10 @@
   <rect x="593" y="318" width="18" height="14" rx="2" fill="white" opacity="0.8"/>
   <text x="602" y="329" text-anchor="middle" font-size="10" fill="#37474F" font-weight="bold">pH</text>
 
-  <!-- Air1 bubble in pH 비이커 -->
+  <!-- Air bubble in pH 측정 비이커 (측정 챔버 폭기) -->
   <circle cx="515" cy="395" r="3" fill="#90CAF9" opacity="0.7"/>
   <circle cx="520" cy="383" r="2.5" fill="#90CAF9" opacity="0.6"/>
   <circle cx="512" cy="373" r="2" fill="#90CAF9" opacity="0.5"/>
-  <text x="510" y="425" text-anchor="middle" font-size="9" fill="#1976D2" font-weight="bold">Air1</text>
 
   <!-- Beaker 3: 3M KCl 비이커 -->
   <rect x="640" y="280" width="110" height="150" rx="6" fill="white" stroke="#F9A825" stroke-width="1.5"/>
@@ -175,9 +168,14 @@
   <path d="M810,445 L770,445 Q755,445 755,455 L755,460 Q755,470 745,470 L515,470 L515,430"
         fill="none" stroke="#90CAF9" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow-air)"/>
 
-  <!-- Air line to 수조물 beaker (아래에서 위로) -->
-  <path d="M810,465 L780,465 Q765,465 765,475 L765,480 Q765,490 755,490 L395,490 L395,430"
+  <!-- Air line to 위즈 탱크 (참조수 직접 폭기) -->
+  <path d="M810,465 L780,465 Q765,465 765,475 L765,495 Q765,505 755,505 L385,505"
         fill="none" stroke="#90CAF9" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow-air)"/>
+  <!-- 위즈 탱크 폭기 기포 (open reference water) -->
+  <circle cx="385" cy="497" r="3" fill="#90CAF9" opacity="0.7"/>
+  <circle cx="393" cy="487" r="2.5" fill="#90CAF9" opacity="0.6"/>
+  <circle cx="388" cy="477" r="2" fill="#90CAF9" opacity="0.5"/>
+  <text x="438" y="500" text-anchor="middle" font-size="9" fill="#2E7D32" font-weight="bold">위즈 탱크 폭기</text>
 
   <!-- Controller to Pump connection -->
   <line x1="895" y1="200" x2="895" y2="240" stroke="#455A64" stroke-width="1.5" stroke-dasharray="4,3"/>
@@ -228,7 +226,7 @@
   <text x="578" y="669" font-size="10" fill="#666">점선 = 역방향 (b)</text>
 
   <rect x="540" y="690" width="12" height="12" rx="2" fill="#0288D1" opacity="0.3"/>
-  <text x="560" y="700" font-size="10" fill="#666">폭기: 참조수(pH 비이커) + 수조수(수조물 비이커) 동시</text>
+  <text x="560" y="700" font-size="10" fill="#666">폭기: 측정 비이커 + 위즈 탱크(참조수) 직접 동시</text>
 
   <rect x="80" y="748" width="840" height="25" rx="4" fill="#263238"/>
   <text x="500" y="766" text-anchor="middle" font-size="11" fill="#80CBC4" font-weight="bold" font-family="monospace, 'Malgun Gothic'">PC측 V4: 준비 → [A] ron 동시폭기·tank 평탄까지 → 전이 → [B] ref 평탄까지 → calkh → 정리 (펌웨어 seq/air 명령 제거됨)</text>

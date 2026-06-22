@@ -43,9 +43,6 @@
     <rect x="320" y="320" width="70" height="50" rx="2" fill="url(#wg)"/>
     <text x="355" y="278" text-anchor="middle" font-size="11" font-weight="bold" fill="#1976D2">수조물</text>
     <text x="355" y="295" text-anchor="middle" font-size="8" fill="#888">200ml</text>
-    <circle cx="338" cy="348" r="2.5" fill="#90CAF9" opacity="0.7"/>
-    <circle cx="345" cy="340" r="2" fill="#90CAF9" opacity="0.5"/>
-    <text x="355" y="385" text-anchor="middle" font-size="8" fill="#1976D2" font-weight="bold">Air2</text>
 
     <!-- 비이커2: pH 측정 -->
     <rect x="420" y="255" width="80" height="120" rx="4" fill="white" stroke="#D32F2F" stroke-width="1.5" opacity="0.9"/>
@@ -58,7 +55,6 @@
     <text x="502" y="285" font-size="7" fill="#455A64" font-weight="bold">pH</text>
     <circle cx="442" cy="350" r="2.5" fill="#90CAF9" opacity="0.7"/>
     <circle cx="448" cy="342" r="2" fill="#90CAF9" opacity="0.5"/>
-    <text x="460" y="385" text-anchor="middle" font-size="8" fill="#D32F2F" font-weight="bold">Air1</text>
 
     <!-- 비이커3: KCL -->
     <rect x="530" y="255" width="80" height="120" rx="4" fill="white" stroke="#F9A825" stroke-width="1.5" opacity="0.9"/>
@@ -182,8 +178,11 @@
 
   <!-- S1 → pH 비이커 에어 -->
   <path d="M489,101 L489,150 Q489,170 460,180 L450,255" fill="none" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="4,2"/>
-  <!-- S2 → 수조물 비이커 에어 -->
-  <path d="M517,101 L517,155 Q517,175 430,175 L360,255" fill="none" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <!-- S2 → 위즈 탱크(참조수) 직접 폭기 -->
+  <path d="M517,101 L517,150 Q517,166 500,166 L300,166 Q293,166 293,184 L293,400 Q293,408 312,408 L345,408" fill="none" stroke="#90CAF9" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <circle cx="345" cy="400" r="2.5" fill="#90CAF9" opacity="0.7"/>
+  <circle cx="352" cy="392" r="2" fill="#90CAF9" opacity="0.5"/>
+  <text x="430" y="410" text-anchor="middle" font-size="8" fill="#2E7D32" font-weight="bold">위즈 탱크 직접 폭기</text>
 
   <!-- 제어기 → 펌프 (전선) -->
   <path d="M730,250 Q700,250 700,150 Q700,80 570,80" fill="none" stroke="#455A64" stroke-width="1.5" stroke-dasharray="6,3"/>
@@ -209,7 +208,7 @@
   <line x1="42" y1="632" x2="68" y2="632" stroke="#2E7D32" stroke-width="2" opacity="0.7"/>
   <text x="75" y="636" font-size="8" fill="#555">M4: 위즈 탱크(참조수) ↔ pH 비이커</text>
   <line x1="42" y1="650" x2="68" y2="650" stroke="#90CAF9" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="75" y="654" font-size="8" fill="#555">에어 호스 (D12 ron — 참조수·수조수 동시 폭기)</text>
+  <text x="75" y="654" font-size="8" fill="#555">에어 호스 (D12 ron — 위즈 탱크·측정 비이커 동시 폭기)</text>
 
   <!-- 공식 -->
   <rect x="410" y="545" width="340" height="80" rx="6" fill="#263238" opacity="0.95"/>
