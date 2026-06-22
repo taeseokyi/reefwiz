@@ -73,13 +73,13 @@ $\dpH=-0.003$, $\mathrm{dKH}=8.387$, i.e.\ an instrument offset of only
 $-0.06\dkh$. The remaining $-0.86\dkh$ was traced to alkalinity loss
 (\co{}\,driven \ce{CaCO3} precipitation / biofilm) in the days-old, small,
 open tank aliquot---a sample-handling artifact, not a measurement fault.
-Re-running the null on the same aged aliquot a day later watched it decay from
-$-0.06$ to $-0.22\dkh$ with the electronics untouched, confirming the
-attribution in the time domain.
+A re-run of the null on the same aged aliquot a day later showed the offset
+decaying from $-0.06$ to $-0.22\dkh$ with the electronics untouched, confirming
+the attribution in the time domain.
 The instrument therefore meets the $\pm0.25\dkh$ goal uncorrected, with
 zero-point calibration deemed unnecessary. Our independently obtained error
 structure (room-\co{} sensitivity, bubble-quality dependence, sealing as the
-fix) reproduces the published behaviour of a commercial counterpart, providing
+remedy) reproduces the published behaviour of a commercial counterpart, providing
 external validation of both the diagnosis and the remedy.
 \end{abstract}
 
@@ -113,7 +113,7 @@ commercial product (AquaWiz) is built on this principle and is used by reef
 hobbyists, but community reports document recurring inaccuracy tied to room-\co{}
 fluctuation and to aeration/bubble quality. The contribution of this paper is
 not the principle but a \emph{quantitative diagnosis}: starting from a working
-DIY build, we instrument a nine-day campaign, expose a $-0.92\dkh$ raw error,
+DIY build, we conduct a nine-day instrumented campaign, expose a $-0.92\dkh$ raw error,
 and show by construction (null experiments) that essentially all of it is a
 sample-handling artifact rather than an instrument limitation---reducing the
 true instrument offset to $-0.06\dkh$ and meeting a $\pm0.25\dkh$ goal without
@@ -541,7 +541,7 @@ water difference is zero by construction).}
 15& 06-19 13:00 & V4+S & 7.957 & 7.947 & $-0.010$ & 8.255 & 28.6 & \textbf{seal verif.\,\textcircled{2}}: dawn$\to$noon jump $+0.29\!\to\!-0.03$ ($\sim$10$\times$); evaporation removed \\
 16& 06-19 21:00 & V4+S & 7.969 & 7.968 & $-0.001$ & 8.421 & 26.8 & near-perfect null (raw err $-0.027$, smallest); but $+0.166$ vs.\ \#14/15 $\Rightarrow$ offset not a perfect constant; AC transient ($-1.8$\,\textcelsius) \\
 17& 06-20 05:00 & V4+S & 7.922 & 7.871 & $-0.051$ & 7.521 & 27.7 & dawn dip recurs; tank 11$\times$ monotone = early latch (not true plateau); AC cooling slowed kinetics \\
-18& 06-20 15:00 & V4+SAN& 7.975 & 7.929 & $-0.046$ & 7.602 & 27.1 & first 5\,L anchor; tank \emph{true} plateau (34$\times$, 21.6\,min) yet $-0.046$ $\Rightarrow$ \textbf{real gap}, not latch artifact \\
+18& 06-20 15:00 & V4+SAN& 7.975 & 7.929 & $-0.046$ & 7.602 & 27.1 & first 5\,L anchor; tank \emph{true} plateau (34$\times$, 21.6\,min) yet $-0.046$ $\Rightarrow$ \textbf{genuine gap}, not latch artifact \\
 19& 06-20 18:11 & V4+S,2$\times$& 7.979 & 7.924 & $-0.055$ & 7.443 & 26.4 & controlled exp; 2$\times$ aeration halves climb (1296$\to$711\,s) but \dpH{} unchanged $\Rightarrow$ \emph{not} kinetics \\
 20& 06-20 18:57 & V4+S,2$\times$& 7.975 & 7.931 & $-0.044$ & 7.636 & 26.7 & ref-first + hose swap; gap persists $\Rightarrow$ order/path/non-equilibrium all rejected \\
 21& 06-20 19:50 & V4+S & 7.975 & 7.926 & $-0.049$ & 7.539 & 26.9 & reproduction \\
@@ -589,17 +589,18 @@ run) coincided with a $+0.166\dkh$ excursion.
 
 \subsection{Sealing collapses both confounds}
 A single \emph{sealed common headspace} resolves the conflict at the source. By
-forcing ref and tank to share one box of air, it makes the common \pco{}
-intrinsic rather than coincidental, blocks room-\co{} excursions, and (bonus)
-suppresses the evaporation that had been concentrating the open tank aliquot.
+compelling the reference and tank to share a single common air volume, it makes
+the common \pco{} intrinsic rather than coincidental, blocks room-\co{}
+excursions, and additionally suppresses the evaporation that had been
+concentrating the open tank aliquot.
 The effect was immediate (runs \#14/\#15): the dawn dip collapsed from
 $-0.05$ to $-0.008$; the dawn$\to$noon dKH jump shrank $\sim$10$\times$
-(from $+0.29$ open to $-0.03$ sealed); and the plateau time crushed from
+(from $+0.29$ open to $-0.03$ sealed); and the plateau time was reduced from
 $\sim$33 readings ($\sim$50\,min) to $\sim$4 ($\sim$5\,min)---which in turn
 collapses $\Delta t$ in Eq.~\eqref{eq:drift}, structurally removing the
 inter-phase drift. The uncorrected error fell from $-0.78$ to $\sim-0.18\dkh$.
 
-\subsection{The active anchor and the persistence of a real gap}
+\subsection{The active anchor and the persistence of a genuine gap}
 Sealing alone left a slow headspace drift, because a passive shared air volume
 re-equilibrates only by surface diffusion (tens of minutes). Placing an air
 stone \emph{in} the 5\,L reference (the ``anchor'') actively pins the shared
@@ -611,9 +612,10 @@ reached a verified true plateau (run \#18: 34 readings, 21.6\,min). A
 controlled pair of experiments (runs \#19/\#20) then rejected, in turn, four
 device-side explanations: doubling the aeration halved the climb time but left
 \dpH{} unchanged (\emph{not} kinetics); reversing the measurement order and
-swapping hoses did not flip the sign (\emph{not} order, warm-up, or fluid path);
-and a head-started tank settled to the \emph{same} equilibrium (\emph{not}
-under-equilibration). The gap was a property of the \emph{water}.
+swapping hoses did not reverse the sign (\emph{not} order, warm-up, or fluid
+path); and a tank started from a higher initial pH settled to the \emph{same}
+equilibrium (\emph{not} under-equilibration). The gap was a property of the
+\emph{water}.
 
 \subsection{Null experiments localize the error}
 Because the device hypotheses were exhausted, we tested the water directly.
@@ -750,15 +752,15 @@ that the dominant error term is sample chemistry (cf.\ Fig.~\ref{fig:budget}).}
 % =====================================================================
 \section{Discussion}
 % =====================================================================
-\paragraph{What the diagnosis bought.} The instinct on seeing a stable
-$\sim-0.8\dkh$ offset is to zero-point calibrate. Resisting that---on the
+\paragraph{Implications of the error decomposition.} The natural response to a
+stable $\sim-0.8\dkh$ offset is to zero-point calibrate. Resisting that---on the
 methodological principle that a calibration constant should be applied only
 after independent replication, and never to a small non-independent
 sample---was decisive, because the offset turned out \emph{not} to be a
 constant device property (it varied $\pm0.085\dkh$ across the sealed cluster and
 ultimately proved to be mostly degraded sample water). Calibrating it away would
-have baked a sample artifact into the instrument and masked the genuine
-$-0.06\dkh$ floor.
+have embedded a sample artifact in the instrument's calibration and masked the
+genuine $-0.06\dkh$ floor.
 
 \paragraph{External validation.} Our independently derived error structure
 mirrors published behaviour of the commercial AquaWiz, lending it external
@@ -773,8 +775,8 @@ creep ($>2\dkh$ error, clean every six months), matches our aeration-sufficiency
 analysis. Reported field accuracy ($\le0.2\dkh$ vs.\ a Hanna checker;
 $\le0.75\dkh$ uncalibrated over seven weeks; ``under $0.5\dkh$ = excellent, use
 for trend'') brackets our $\pm0.25\dkh$ result and our trend-oriented intent.
-Notably, commercial units manage by calibration and cleaning and do not pursue a
-true equilibrium plateau; our plateau-following step goes one further.
+Notably, commercial units are managed by periodic calibration and cleaning and do not pursue a
+true equilibrium plateau; our plateau-following step extends this further.
 
 \paragraph{Scientific grounding.} The kinetic separation underlying the method
 is well established: the aqueous \co{} hydration/dehydration relaxation completes
