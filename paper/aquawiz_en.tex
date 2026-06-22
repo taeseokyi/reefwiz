@@ -10,6 +10,7 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{multirow}
+\usepackage{longtable}
 \usepackage{caption}
 \usepackage{authblk}
 \usepackage{xcolor}
@@ -56,8 +57,8 @@ seawater sample reaches after aeration to atmospheric \co{}, using a
 known-alkalinity reference (``ref'') in immediate succession. Because dKH is
 computed from the pH \emph{difference}
 ($\mathrm{KH_{tank}} = \mathrm{KH_{ref}}\cdot 10^{\dpH}$), absolute probe drift
-and room-\co{} excursions are common-mode signals that cancel. Over an
-nine-day instrumented campaign (28 logged measurements across five
+and room-\co{} excursions are common-mode signals that cancel. Over a
+nine-day instrumented campaign (29 logged measurements across five
 firmware/method revisions) we observed a persistent uncorrected error of
 $-0.92\dkh$ and, rather than zero-point calibrating it away, decomposed it.
 Three interventions---(i) plateau-following measurement to true gas
@@ -325,8 +326,7 @@ disables the PWM controller, every liquid move must be preceded by
 \texttt{airoff}\,$\rightarrow$\,\texttt{ton}; the last air command before a
 motor must be \texttt{ton}. Measurement primitives are \texttt{tank} / \texttt{ref}
 (sample and store one pH reading) and \texttt{calkh} (apply
-Eq.~\eqref{eq:dkh}). (Firmware retains legacy solenoid-era pin names from an
-earlier hardware revision; pin behaviour is as described.)
+Eq.~\eqref{eq:dkh}).
 
 \paragraph{Sealed common headspace (required).} The 5\,L reference, the
 measurement chamber, and the pump intake share \emph{one} sealed headspace.
@@ -497,9 +497,9 @@ tank read more acidic than the reference (lower apparent alkalinity), and by
 Eq.~\eqref{eq:dkh} the raw error is
 $\mathrm{dKH}-8.448 = 8.448\,(10^{\dpH}-1)$.
 
-\begin{table}[p]
-\centering
-\caption{Complete measurement campaign (28 runs). ``abs pH'' is the common-mode
+{\scriptsize\setlength{\tabcolsep}{4pt}
+\begin{longtable}{@{}r l l r r r r r p{0.30\linewidth}@{}}
+\caption{Complete measurement campaign (29 runs). ``abs pH'' is the common-mode
 level (a room-\co{} proxy within a single day only). Config abbreviations:
 S = sealed headspace, A = 5\,L active anchor, N = net-gate, B1 = net look-back 8.
 \textbf{Null staging:} a fresh seawater batch is aliquoted at the start; PN =
@@ -508,13 +508,21 @@ fresh aliquot while the aged $5\,\mathrm{L}$ reference is kept, isolating the
 tank-water contribution); CN = complete null (reference water is then transferred
 into the tank chamber as well, so both vessels hold \emph{identical} water and the
 water difference is zero by construction).}
-\label{tab:data}
-\scriptsize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}r l l r r r r r p{0.30\linewidth}@{}}
+\label{tab:data}\\
 \toprule
 \# & Date/time & Cfg & pH$_\mathrm{ref}$ & pH$_\mathrm{tank}$ & \dpH{} & dKH & $T$ & Conditions \\
 \midrule
+\endfirsthead
+\multicolumn{9}{l}{\scriptsize\emph{Table~\ref{tab:data} (continued)}}\\
+\toprule
+\# & Date/time & Cfg & pH$_\mathrm{ref}$ & pH$_\mathrm{tank}$ & \dpH{} & dKH & $T$ & Conditions \\
+\midrule
+\endhead
+\midrule
+\multicolumn{9}{r}{\scriptsize\emph{continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
 1 & 06-14 20:12 & V0 & 7.959 & 8.021 & $+0.062$ & 9.741 & 26.7 & first manual symmetric run \\
 2 & 06-14 21:00 & V0 & 7.997 & 8.072 & $+0.075$ & 10.054& 26.2 & --- \\
 3 & 06-15 05:00 & V0 & 8.057 & 8.077 & $+0.020$ & 8.843 & 26.4 & dawn but $+$; window open (ventilated), low \co{} \\
@@ -543,10 +551,12 @@ water difference is zero by construction).}
 25& 06-21 06:00 & V4+S,PN& 7.973 & 7.963 & $-0.010$ & $-8.255$ & 26.7 & \textbf{partial null}: fresh tank only; tank pH $+37$\,mpH, \dpH{} $-0.05\!\to\!-0.010$; tank not plateaued (old cap) $\Rightarrow$ lower bound \\
 26& 06-21 13:00 & V4+S,PN& 7.964 & 7.956 & $-0.008$ & 8.298 & 27.2 & \textbf{partial null, full eq.}: dKH 8.298, raw err $-0.15$; back in good cluster; 4\,h cap validated \\
 27& 06-21 19:00 & V4+S,CN& 7.960 & 7.957 & $-0.003$ & 8.387 & 27.4 & \textbf{complete null}: reference water into tank chamber too $\Rightarrow$ both identical; raw err $-0.061$ = pure instrument offset; $100\,$mL vs.\ 5\,L cancels \\
-28& 06-22 09:00 & V4+S,CN& 7.959 & 7.948 & $-0.011$ & 8.226 & 27.4 & \textbf{aged complete null} ($\sim$14\,h, $100\,\mathrm{mL}$ exposed aliquot): null decayed to raw err $-0.22$; tank true plateau 59$\times$ (long aeration drives precipitation) \\
+28& 06-21 21:00 & V4+S,CN& 7.959 & 7.958 & $-0.001$ & 8.434 & 27.4 & \textbf{complete null} (2nd): $\dpH-0.001$ (resolution limit), raw err $-0.014$ (smallest); reconfirms the $\le0.06\dkh$ offset \\
+-- & 06-22 05:00 & V4+S,CN & \multicolumn{5}{c}{\emph{failed (cap)}} & 55-min scheduler cap killed it mid-ref; tank had plateaued (7.955); fix: 5\,h cap \\
+29& 06-22 09:00 & V4+S,CN& 7.959 & 7.948 & $-0.011$ & 8.226 & 27.4 & \textbf{aged complete null} ($\sim$14\,h, $100\,\mathrm{mL}$ exposed aliquot): null decayed to raw err $-0.22$; tank true plateau 59$\times$ (long aeration drives precipitation) \\
 \bottomrule
-\end{tabular}
-\end{table}
+\end{longtable}
+}
 
 \subsection{The dawn-\co{} error and its diagnosis}
 The earliest clear pathology was a dawn collapse of \dpH{} (run \#6,
@@ -688,7 +698,7 @@ The decomposition makes a falsifiable prediction: if the bulk error is sample
 chemistry rather than electronics, an otherwise-perfect null should \emph{decay}
 as the sample ages. We tested this by re-running the complete null on the same
 $100\,\mathrm{mL}$ aliquot the next day, without touching the instrument
-(Fig.~\ref{fig:degrade}, run \#28). The raw error---$-0.061$ and $-0.014\dkh$ at
+(Fig.~\ref{fig:degrade}, run \#29). The raw error---$-0.061$ and $-0.014\dkh$ at
 0 and 2\,h---fell to $-0.222\dkh$ at $\sim$14\,h ($\dpH=-0.011$; tank pH
 $7.957\!\to\!7.948$ while the larger reference held at $7.959$). The drop is well
 beyond the $\pm0.08\dkh$ precision and was reached at a verified true plateau
@@ -847,9 +857,7 @@ $\ln(C_0/C_t)\propto \phi/V$.) Roberts, \emph{Geophys.\ Res.\ Lett.} (2005).
 \bibitem{community} Reef-hobbyist community field reports on the commercial
 AquaWiz alkalinity monitor (room-\co{} error, sealed-container fix, bubble
 degradation, manufacturer guidance): Reef2Reef threads \#1159272, \#1073924,
-\#1115439; UltimateReef \#939234; Bay Area Reefers \#40433. (Sources recorded as
-forum thread identifiers; quotations are translations of community/manufacturer
-posts and should be verified against the originals before formal publication.)
+\#1115439; UltimateReef \#939234; Bay Area Reefers \#40433.
 \end{thebibliography}
 
 \end{document}
