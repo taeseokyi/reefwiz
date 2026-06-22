@@ -3,6 +3,19 @@
 AquaWiz KH 1회 측정 (V4 — 평형(plateau) 추종 측정)
 HC-06 블루투스 시리얼로 한 번만 측정하고 dkh.dat 에 기록 후 종료.
 
+두 가지 모드:
+  • (기본) calkh 모드 — 인자 없이 실행. ref dKH(EEPROM 앵커)로 tank dKH 측정,
+    결과를 dkh.dat 에 기록(아래 형식). Windows 작업 스케줄러 정시 실행용.
+  • calref 모드 — `--setref <수조실측dKH>` 지정. tank·ref pH 측정은 동일하나
+    calkh 대신 calref 를 호출해 *ref dKH 를 역산*한다. 절차:
+      1) 명령라인 수조 실측 dKH 를 setref 로 펌웨어에 기록(측정 전 즉시 검증).
+      2) tank·ref pH 측정(calkh 모드와 완전히 동일).
+      3) calref 호출 → 펌웨어가 newRefDKH = 수조dKH · 10^(-(tankPH-refPH)) 계산 후
+         refDKH 에 대입 + EEPROM 저장(펌웨어 calcRefDKH 가 자동 저장 → 추가 setref 불요).
+    보정(일회성)이므로 dkh.dat 에는 기록하지 않는다(시계열·서버 오염 방지).
+    새 ref dKH 가 알려진 표준액(예: 위즈 참조수 8.448 dKH)으로 수조를 측정해
+    역으로 ref 를 교정할 때 쓴다.
+
 V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
   - tank·ref 를 폭기 유지(ron)한 채 반복 측정, **최근 FLAT_SPAN_N개 max−min ≤ FLAT_SPAN_MPH(흔들림)
     AND 최근 FLAT_NET_N개 양끝차 ≤ FLAT_NET_MPH(드리프트)** 면 평형 도달로 보고 종료. ★B1: net 룩백을
@@ -39,6 +52,7 @@ import time
 import re
 import sys
 import os
+import argparse
 from datetime import datetime
 
 PORT     = 'COM9'
@@ -235,17 +249,29 @@ def measure_until_flat(ser, what):
 # 결과 파싱
 # ─────────────────────────────────────────────
 
-def parse_results(kh_lines):
-    """calkh 출력에서 참조pH/수조pH/refKH/수조KH/온도 파싱.
+def parse_results(kh_lines, calref=False):
+    """calkh/calref 출력에서 참조pH/수조pH/ref dKH/tank dKH/온도 파싱.
     반환: (ref_ph, tank_ph, ref_kh, tank_kh, temp) — 파싱 실패 항목은 None.
+      • calkh: ref_kh=앵커 refKH, tank_kh=측정 수조KH.
+      • calref: ref_kh=새refDKH(역산·저장됨), tank_kh=수조dKH(입력한 실측값).
+    펌웨어 라벨이 두 명령에서 다르므로(refKH/수조KH vs 새refDKH/수조dKH) 분기한다.
     """
-    patterns = {
-        'ref_ph':  r'참조pH:([\d.]+)',
-        'tank_ph': r'수조pH:([\d.]+)',
-        'ref_kh':  r'refKH:([\d.]+)',
-        'tank_kh': r'수조KH:([\d.]+)',
-        'temp':    r'온도:([\d.]+)',
-    }
+    if calref:
+        patterns = {
+            'ref_ph':  r'참조pH:([\d.]+)',
+            'tank_ph': r'수조pH:([\d.]+)',
+            'ref_kh':  r'새refDKH:([\d.]+)',   # calref 가 역산·저장한 새 ref dKH
+            'tank_kh': r'수조dKH:([\d.]+)',     # setref 로 입력한 수조 실측 dKH
+            'temp':    r'온도:([\d.]+)',
+        }
+    else:
+        patterns = {
+            'ref_ph':  r'참조pH:([\d.]+)',
+            'tank_ph': r'수조pH:([\d.]+)',
+            'ref_kh':  r'refKH:([\d.]+)',
+            'tank_kh': r'수조KH:([\d.]+)',
+            'temp':    r'온도:([\d.]+)',
+        }
     vals = {k: None for k in patterns}
     for line in kh_lines:
         for key, pat in patterns.items():
@@ -289,9 +315,20 @@ def _safe_cleanup(ser):
 # 측정 루틴 (V4)
 # ─────────────────────────────────────────────
 
-def run_measurement(ser):
+def run_measurement(ser, tank_dkh=None):
+    """tank_dkh 가 None 이면 calkh 모드(기본), 값이 있으면 calref 모드.
+    calref 모드는 측정 시작 전에 setref:<tank_dkh> 를 펌웨어에 기록·검증한다."""
+    calref = tank_dkh is not None
     completed = False
     try:
+        # ── calref 모드: 수조 실측 dKH 를 setref 로 기록(측정 전 즉시 검증) ──
+        #    범위(0.5~30.0) 밖이거나 응답 이상이면 긴 측정 전에 바로 실패시킨다.
+        if calref:
+            print(f"\n[calref] 수조 실측 dKH 를 setref 로 기록: {tank_dkh:.3f} dKH")
+            sr_lines = send(ser, f'setref:{tank_dkh:.3f}', stop_pattern='refDKH', timeout=5)
+            if not any('[OK] refDKH' in ln for ln in sr_lines):
+                raise RuntimeError(f"setref 실패(범위 0.5~30.0 확인) — 응답: {sr_lines}")
+
         # ── 준비: KCl 배출 → tank(본수조수) 측정챔버로 이송 (m1→m2) ──
         #    ★배관(2026-06-20): m1=본수조↔홀딩, m2=홀딩↔측정챔버, m4=참조수(5L)↔측정챔버, m3=KCl↔측정챔버.
         #    ★측정 순서 = tank 먼저 → ref 나중. 이유: 5L 위즈수조가 *동시 폭기*돼 ref 가 tank 측정 내내
@@ -335,8 +372,13 @@ def run_measurement(ser):
         send(ser, 'airoff', stop_pattern='OFF')   # ★측정 종료 즉시 OFF → 이후 calkh·정리 이동은 전부 에어 OFF(액체 이동 규칙)
 
         # ── KH 계산 (펌웨어 저장 refPH/tankPH = 각 phase 마지막 평탄값) ──
-        print("\n[KH] 계산")
-        kh_lines = send(ser, 'calkh', stop_pattern='===========', timeout=10)
+        #    calref 모드는 calkh 대신 calref 호출(ref dKH 역산·EEPROM 저장).
+        if calref:
+            print("\n[calref] ref dKH 역산·저장")
+            kh_lines = send(ser, 'calref', stop_pattern='refDKH 저장', timeout=10)
+        else:
+            print("\n[KH] 계산")
+            kh_lines = send(ser, 'calkh', stop_pattern='===========', timeout=10)
 
         # ── 정상 정리: ref 회수(측정챔버→5L) → 파킹 tank 마무리(홀딩→본수조) → KCl 소크 ──
         send(ser, 'ton', stop_pattern='수조ON')
@@ -354,8 +396,28 @@ def run_measurement(ser):
         completed = True
 
         # ── 파싱·출력 ──
-        ref_ph_r, tank_ph_r, ref_kh, tank_kh, temp = parse_results(kh_lines)
+        ref_ph_r, tank_ph_r, ref_kh, tank_kh, temp = parse_results(kh_lines, calref=calref)
         plateau_ok = bool(tank_flat and ref_flat)
+
+        if calref:
+            # ── calref 모드: ref dKH 역산·저장 결과 출력 (dkh.dat 엔 기록 안 함) ──
+            if ref_kh is None:
+                raise RuntimeError("calref 실패 — 새 refDKH 파싱 실패(범위 0.5~30.0 또는 응답 이상)")
+            print("\n" + "=" * 40)
+            print("ref dKH 교정 결과 (calref)")
+            print("=" * 40)
+            if ref_ph_r  is not None: print(f"  참조수 pH       : {ref_ph_r:.3f}")
+            if tank_ph_r is not None: print(f"  수조수 pH       : {tank_ph_r:.3f}")
+            print(f"  입력 수조 dKH   : {tank_dkh:.3f} dKH")
+            print(f"  ★새 ref dKH    : {ref_kh:.3f} dKH  (EEPROM 저장 완료)")
+            if temp      is not None: print(f"  온도            : {temp:.1f} C")
+            print(f"  평탄도달        : tank {tank_n}회 {'O' if tank_flat else 'X(상한)'} / "
+                  f"ref {ref_n}회 {'O' if ref_flat else 'X(상한)'}")
+            if not plateau_ok:
+                print("  ※ 평탄 미도달(상한) — 교정값 정확도 저하 가능. 평탄도달 후 재교정 권장.")
+            print("=" * 40)
+            return (ref_ph_r, tank_ph_r, ref_kh, tank_kh, temp)
+
         # ★평탄 미도달이면 측정 경도(tank_kh)에 음수(-) 표식 — 값 크기는 유지(서버가 부호로 인지).
         #   (전부 0인 '에러 표식'과는 구분됨 → 에러 래치를 트리거하지 않음)
         if (tank_kh is not None) and (not plateau_ok):
@@ -386,17 +448,37 @@ def run_measurement(ser):
 # ─────────────────────────────────────────────
 
 def main():
-    port = sys.argv[1] if len(sys.argv) > 1 else PORT
+    parser = argparse.ArgumentParser(
+        description="AquaWiz KH 1회 측정 V4. 인자 없으면 calkh(수조 dKH 측정→dkh.dat 기록), "
+                    "--setref 지정 시 calref(ref dKH 역산·EEPROM 저장).")
+    parser.add_argument('port', nargs='?', default=PORT,
+                        help=f'시리얼 포트(기본 {PORT})')
+    parser.add_argument('--setref', type=float, default=None, dest='tank_dkh', metavar='수조dKH',
+                        help='수조 실측 dKH. 지정 시 calref 모드 — 이 값을 setref 로 기록하고 '
+                             'calref 로 ref dKH 를 역산·저장한다(dkh.dat 기록 안 함). '
+                             '미지정 시 calkh 모드(현재와 동일).')
+    a = parser.parse_args()
+    port = a.port
+    tank_dkh = a.tank_dkh
+    calref = tank_dkh is not None
+
+    if calref and not (0.5 <= tank_dkh <= 30.0):
+        print(f"[ERR] --setref 값 {tank_dkh} 는 펌웨어 허용 범위(0.5~30.0) 밖입니다. 중단.")
+        return
+
     now  = datetime.now()
     hour = now.hour
 
-    print(f"AquaWiz KH 1회 측정 V4 — {port} @ {BAUD}baud")
-    print(f"기록 파일: {DAT_FILE}")
+    mode = f"calref (ref dKH 역산, 수조 실측={tank_dkh:.3f} dKH)" if calref else "calkh (수조 dKH 측정)"
+    print(f"AquaWiz KH 1회 측정 V4 — {port} @ {BAUD}baud  [{mode}]")
+    if not calref:
+        print(f"기록 파일: {DAT_FILE}")
     print(f"측정 시작: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    # ★에러 래치: 마지막 줄이 에러 표식(전부 0)이면 측정하지 않고 에러 표식만 재기록.
+    # ★에러 래치(calkh 모드 한정): 마지막 줄이 에러 표식(전부 0)이면 측정하지 않고 에러 표식만 재기록.
     #   (수동으로 마지막 에러 줄을 지우기 전까지 매 실행 반복 — 오류 상태 무인 반복측정 방지)
-    if last_dat_is_error():
+    #   calref 는 dkh.dat 를 건드리지 않는 수동 보정이라 래치 적용 안 함.
+    if not calref and last_dat_is_error():
         print("[중단] dkh.dat 마지막 줄이 에러 표식(전부 0) — 측정 생략, 에러 표식 재기록.")
         print("       수동으로 마지막 에러 줄을 제거하기 전까지 매 실행 반복됩니다.")
         log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -407,11 +489,19 @@ def main():
         with serial.Serial(port, BAUD, timeout=1) as ser:
             time.sleep(2)
             ser.reset_input_buffer()
-            result = run_measurement(ser)
+            result = run_measurement(ser, tank_dkh)
     except serial.SerialException as e:
         print(f"[ERR] 시리얼 오류: {e}")
     except Exception as e:
         print(f"[ERR] 예외 발생: {e}")
+
+    if calref:
+        # calref 모드는 dkh.dat 에 기록하지 않는다(일회성 보정). 결과는 위에서 출력됨.
+        if result and result[2] is not None:
+            print(f"\n[완료] ref dKH 가 {result[2]:.3f} dKH 로 EEPROM 에 저장되었습니다.")
+        else:
+            print("\n[실패] ref dKH 교정이 완료되지 않았습니다(위 로그 확인).")
+        return
 
     if result and all(v is not None for v in result):
         log_kh(hour, *result)

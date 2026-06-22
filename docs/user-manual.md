@@ -137,11 +137,17 @@ PC측 자동 측정 스크립트:
 
 ```bash
 # 1회 측정 후 종료 (Windows 작업 스케줄러 정시 호출 / 수동 실행 가능)
-python bin/measure_kh_once.py        # 포트 = 기본값 COM15
+python bin/measure_kh_once.py        # 포트 = 기본값 COM9
 python bin/measure_kh_once.py COM7   # 포트 직접 지정
+
+# ref dKH 교정(역산) — 알려진 수조 dKH 로 참조수 dKH 를 거꾸로 보정
+python bin/measure_kh_once.py --setref 8.448         # 수조 실측 8.448 dKH 기준
+python bin/measure_kh_once.py COM7 --setref 8.448    # 포트 지정 + 교정
 ```
 
 스크립트가 준비 → **[A] tank·ref 동시 폭기 + tank 평탄까지** → 전이 → **[B] ref 평탄까지** → `calkh` → 정리 순으로 펌웨어 명령을 단계별 전송합니다. 상세 흐름·상수·스케줄러 등록은 [자동화 환경 구성 — 자동 측정 시퀀스](system-setup.md#자동-측정-시퀀스-pc-측-v4)를 참조하세요.
+
+**`--setref` (calref 모드, ref dKH 역산):** 인자를 주지 않으면 평소처럼 `calkh`(수조 dKH 측정 → `dkh.dat` 기록)를 수행합니다. `--setref <수조실측dKH>` 를 주면 동일한 tank·ref pH 측정 후 `calkh` 대신 **`calref`** 를 호출해 **참조수 dKH 를 역산·EEPROM 저장**합니다. 절차: ① 명령라인 수조 dKH 를 `setref` 로 기록(측정 전 범위 0.5~30.0 즉시 검증) → ② tank·ref pH 측정(동일) → ③ `calref` 가 `newRefDKH = 수조dKH · 10^(−(tankPH−refPH))` 를 계산하고 `refDKH` 에 대입 + EEPROM 저장(펌웨어가 자동 저장하므로 추가 `setref` 불요). 보정은 일회성이라 **`dkh.dat` 에는 기록하지 않습니다.** 위즈 참조수 같은 알려진 표준액으로 수조를 채워 측정하면, 그 값을 기준으로 참조수 dKH 앵커를 교정할 수 있습니다.
 
 ### 3.3 calkh 결과 출력
 
