@@ -138,8 +138,8 @@
   <!-- Separator -->
   <line x1="30" y1="430" x2="830" y2="430" stroke="#ccc" stroke-width="1"/>
 
-  <!-- Section: 에어 (ron — 2개 에어펌프 동시 ON, 솔레노이드 없음) -->
-  <text x="50" y="460" font-size="14" font-weight="bold" fill="#455A64">에어 (ron — 2개 에어펌프 동시 ON, 솔레노이드 없음)</text>
+  <!-- Section: 에어 (ron — 2개 에어펌프 동시 ON) -->
+  <text x="50" y="460" font-size="14" font-weight="bold" fill="#455A64">에어 (ron — 2개 에어펌프 동시 ON)</text>
 
   <!-- 에어펌프 ×2 (L298N3) -->
   <rect x="50" y="478" width="130" height="48" rx="8" fill="#E1F5FE" stroke="#0288D1" stroke-width="2"/>
@@ -157,11 +157,10 @@
   <text x="504" y="542" text-anchor="middle" font-size="11" fill="#C62828">측정 비이커</text>
 
   <!-- 설명 박스 -->
-  <rect x="605" y="478" width="228" height="74" rx="6" fill="#FFF9C4" stroke="#F9A825" stroke-width="1"/>
+  <rect x="605" y="478" width="228" height="58" rx="6" fill="#FFF9C4" stroke="#F9A825" stroke-width="1"/>
   <text x="719" y="497" text-anchor="middle" font-size="10" fill="#795548">ron = 두 에어펌프 동시 ON</text>
   <text x="719" y="513" text-anchor="middle" font-size="10" fill="#795548">위즈 탱크(앵커) + 측정 비이커 동시 폭기</text>
   <text x="719" y="529" text-anchor="middle" font-size="10" fill="#795548">D12=ron(에어) · D13=ton(PWM 모터)</text>
-  <text x="719" y="545" text-anchor="middle" font-size="10" fill="#795548">3-way 솔레노이드·교대 공급 제거됨</text>
 
   <!-- Legend -->
   <line x1="640" y1="390" x2="670" y2="390" stroke="#666" stroke-width="2.5"/>
