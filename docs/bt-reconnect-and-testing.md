@@ -62,7 +62,7 @@
 | 파일 | 역할 |
 |------|------|
 | `bin/firmware_sim.py` | **소켓 가상 포트 펌웨어 시뮬레이터.** 펌웨어 명령 응답을 충실히 모방. 측정은 상수 pH라 호스트 평탄 판정상 **정확히 8회째 latch**, 모터는 지연 없이 즉시 완료. 펌웨어 상태는 연결을 가로질러 유지(RF 드롭 중에도 살아있는 펌웨어 모사). 드롭/서버 kill/깨진 응답/모터 미완료/먹통 등 예외 주입 가능. 단독 실행(`python3 bin/firmware_sim.py`)으로 수동 접속 테스트도 가능. |
-| `bin/test_measure_sim.py` | **통합 회귀 테스트.** 10 시나리오 / 49 검증. |
+| `bin/test_measure_sim.py` | **통합 회귀 테스트.** 11 시나리오 / 53 검증. |
 | `bin/bt_health.py` | (보조) BT 링크 드롭률·RTT 모니터. `--once`(즉석 확인) 또는 연속 로깅. |
 
 ### 실행 — WSL, 저장소 안에서
@@ -75,7 +75,7 @@ cd bin && python3 test_measure_sim.py      # WSL python3 + pyserial 3.5 (socket:
 > *전* 항상 이 테스트를 돌려 전부 PASS인지 확인한 뒤 `C:\dkh\work`로 배포한다.** 시뮬레이터·테스트는
 > 저장소 `bin/`에만 두고 Windows로 배포하지 않는다.
 
-### 시나리오 (10개 / 49 검증)
+### 시나리오 (11개 / 53 검증)
 
 | # | 시나리오 | 검증 수 | 확인 내용 |
 |---|----------|:---:|------|
@@ -89,6 +89,7 @@ cd bin && python3 test_measure_sim.py      # WSL python3 + pyserial 3.5 (socket:
 | 6 | 깨진 응답(pH 누락) | 3 | 파싱 실패 → `FAIL_MAX`로 phase 실패(연결 문제 아님 → 재연결 안 함) |
 | 7 | 모터 완료 누락(튜브 막힘) | 3 | 재시도(정지+재송신) 소진 후 미완료 처리 |
 | 8 | 버스트(연속 2회 드롭) | 4 | 두 번 재연결하며 완주, 정확도 유지 |
+| 11 | setref 예외 | 4 | 범위 밖(`--setref 40`)=main 가드가 측정 전 차단 / 펌웨어 `[ERR]` 거부=`run_measurement`가 측정 전 RuntimeError |
 
 ### 배포 안전 — 테스트 타이밍 패치는 in-memory 한정
 

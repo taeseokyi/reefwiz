@@ -195,7 +195,7 @@ tank 측정 내내 5L 위즈수조를 *동시 폭기*해 ref 가 5L서 co-aerati
 | `bin/measure_kh_once.py` | **V4** — 1회 측정 후 종료 (Windows 작업 스케줄러 정시 실행용) |
 | `bin/test_aeration_plateau.py` | tank 단일 평형곡선 진단 (V4와 동일 평탄 기준, 종료 시 KCl 소크) |
 | `bin/firmware_sim.py` | 소켓 가상 포트 펌웨어 시뮬레이터 (회귀 테스트용, WSL 전용) |
-| `bin/test_measure_sim.py` | 통합 회귀 테스트 (10 시나리오/49 검증) — [상세](bt-reconnect-and-testing.md#3-시뮬레이터-회귀-검증-배포-전-필수) |
+| `bin/test_measure_sim.py` | 통합 회귀 테스트 (11 시나리오/53 검증) — [상세](bt-reconnect-and-testing.md#3-시뮬레이터-회귀-검증-배포-전-필수) |
 | `bin/bt_health.py` | (보조) HC-06 BT 링크 드롭률·RTT 모니터 |
 
 **V4 (`measure_kh_once.py`) 주요 상수:**
@@ -345,7 +345,7 @@ Register-ScheduledTask -TaskName 'Measure KH' -TaskPath '\tsyi\' `
 **회귀 검증(배포 전 필수):** 소켓 가상 펌웨어 시뮬레이터로 정상·예외 상황을 검증한다.
 
 ```bash
-cd bin && python3 test_measure_sim.py     # WSL, 10 시나리오/49 검증 — 전부 PASS여야 배포
+cd bin && python3 test_measure_sim.py     # WSL, 11 시나리오/53 검증 — 전부 PASS여야 배포
 ```
 
 > 증상·호스트 조치·4계층 동작·상수·시뮬레이터/테스트 구성(시나리오 표)·배포 안전성은

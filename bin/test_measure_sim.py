@@ -9,7 +9,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 10 시나리오 / 49 검증:
+총 11 시나리오 / 53 검증:
   ── 정상/회복 6 시나리오(36 검증) ──
     [1] 클린 calkh           (9) 전체 흐름·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
@@ -17,11 +17,12 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [4] calref(--setref)     (5) ref dKH 역산 경로 동일 견고성
     [9] 측정 in-send 재시도  (5) 측정 read 중 드롭→send 내부 재연결+재송신 성공(tank 9회)
     [10] calref 도중 드롭     (6) setref 재연결+재송신 후 역산 완주(setref 2회)
-  ── 예외 4 시나리오(13 검증) ──
+  ── 예외 5 시나리오(17 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
     [7] 모터 완료 누락(막힘) (3) 재시도(정지+재송신) 소진 후 미완료 처리
     [8] 버스트(연속 2회 드롭)(4) 두 번 재연결하며 완주, 정확도 유지
+    [11] setref 예외         (4) 범위 밖=main 가드 차단 / 펌웨어 거부=측정 전 RuntimeError
 
 ※ 테스트는 import 한 모듈의 타이밍 상수만 메모리에서 패치(빠른 실행). 소스 파일의 실전 상수는
   불변 → 배포본 정상 동작.
@@ -282,6 +283,44 @@ def scenario_calref_drop():
     check("'[RF]' 재시도 로그", '[RF]' in out)
 
 
+def scenario_setref_exception():
+    print("\n[11] setref 예외 — (a) 범위 밖 입력은 main 가드가 측정 전 차단 (b) 펌웨어 거부 시 우아한 실패")
+    # (a) main() 범위 가드: --setref 가 펌웨어 허용범위(0.5~30) 밖이면 시리얼 접속 전 조기 거부
+    buf = io.StringIO(); argv_bak = sys.argv
+    sys.argv = ['measure_kh_once.py', '--setref', '40']
+    try:
+        with contextlib.redirect_stdout(buf):
+            mk.main()
+    finally:
+        sys.argv = argv_bak
+    out_a = buf.getvalue()
+    check("(a) main 범위 가드가 측정 전 거부", '[ERR]' in out_a and '범위' in out_a,
+          f"out={out_a.strip()[:80]}")
+
+    # (b) 가드 우회(run_measurement 직접 호출) — 펌웨어가 setref 거부([ERR]) → 측정 전 RuntimeError
+    sim = FirmwareSim()
+    port = sim.start(); time.sleep(0.1)
+    ser = open_ser(port); time.sleep(0.1); ser.reset_input_buffer()
+    buf = io.StringIO(); raised = None
+    sr_bak = mk.SEND_RETRY_MAX
+    mk.SEND_RETRY_MAX = 1            # 결정적 [ERR]엔 재시도 무의미 → 테스트 시간 단축
+    try:
+        with contextlib.redirect_stdout(buf):
+            mk.run_measurement(ser, tank_dkh=40.0)
+    except Exception as e:
+        raised = e
+    finally:
+        mk.SEND_RETRY_MAX = sr_bak
+        try: ser.close()
+        except Exception: pass
+        sim.stop()
+    check("(b) 펌웨어 거부 시 RuntimeError(setref 실패)", isinstance(raised, RuntimeError),
+          f"raised={raised!r}")
+    check("(b) setref 는 전송됨", 'setref:40.000' in sim.received, f"received={sim.received}")
+    check("(b) 측정 전 중단(tank 미측정)", sim.received.count('tank') == 0,
+          f"tank={sim.received.count('tank')}")
+
+
 def main():
     print("=" * 56)
     print("measure_kh_once 통합 테스트 (firmware_sim)")
@@ -299,6 +338,7 @@ def main():
     scenario_garbled_measure()
     scenario_motor_no_complete()
     scenario_burst_recover()
+    scenario_setref_exception()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
     print("=" * 56)
