@@ -9,7 +9,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 11 시나리오 / 53 검증:
+총 12 시나리오 / 58 검증:
   ── 정상/회복 6 시나리오(36 검증) ──
     [1] 클린 calkh           (9) 전체 흐름·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
@@ -17,12 +17,13 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [4] calref(--setref)     (5) ref dKH 역산 경로 동일 견고성
     [9] 측정 in-send 재시도  (5) 측정 read 중 드롭→send 내부 재연결+재송신 성공(tank 9회)
     [10] calref 도중 드롭     (6) setref 재연결+재송신 후 역산 완주(setref 2회)
-  ── 예외 5 시나리오(17 검증) ──
+  ── 예외 6 시나리오(22 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
     [7] 모터 완료 누락(막힘) (3) 재시도(정지+재송신) 소진 후 미완료 처리
     [8] 버스트(연속 2회 드롭)(4) 두 번 재연결하며 완주, 정확도 유지
     [11] setref 예외         (4) 범위 밖=main 가드 차단 / 펌웨어 거부=측정 전 RuntimeError
+    [12] 모터 정지 명령 드롭 (5) mNs 자체 드롭→다음 시도 재연결·재정지·재송신 완료
 
 ※ 테스트는 import 한 모듈의 타이밍 상수만 메모리에서 패치(빠른 실행). 소스 파일의 실전 상수는
   불변 → 배포본 정상 동작.
@@ -321,6 +322,36 @@ def scenario_setref_exception():
           f"tank={sim.received.count('tank')}")
 
 
+def scenario_motor_stop_drop():
+    print("\n[12] 모터 정지(mNs) 명령 자체 드롭 → 다음 시도서 재연결·재정지 후 완료")
+    # m1f 첫 시도 드롭(→재시도 진입) + 그 재시도의 m1s 정지도 드롭 → 또 한 번 재시도서
+    #   재연결+재정지(m1s)+재송신(m1f) 으로 완료. _stop_motor 는 best-effort라 그 자체는 재시도
+    #   안 하지만, 바깥 send 재시도 루프가 다음 시도에 ensure_link 재연결 후 정지를 다시 발행한다.
+    sim = FirmwareSim()
+    sim.drops = [{'pat': 'm1f', 'nth': 1, 'when': 'before'},
+                 {'pat': 'm1s', 'nth': 1, 'when': 'before'}]
+    port = sim.start(); time.sleep(0.1)
+    ser = open_ser(port); time.sleep(0.1); ser.reset_input_buffer()
+    buf = io.StringIO(); lines = None
+    try:
+        with contextlib.redirect_stdout(buf):
+            lines = mk.send(ser, 'm1f:5', stop_pattern='[모터1] 완료', timeout=0.5, keepalive=True)
+    finally:
+        try: ser.close()
+        except Exception: pass
+        sim.stop()
+    got_done = bool(lines) and any('[모터1] 완료' in ln for ln in lines)
+    check("최종 모터 완료(정지 명령 드롭에도 회복)", got_done, f"lines={lines}")
+    m1f_idx = [i for i, c in enumerate(sim.received) if c == 'm1f:5']
+    m1s_idx = [i for i, c in enumerate(sim.received) if c == 'm1s']
+    check("m1f 재송신(2회)", len(m1f_idx) == 2, f"m1f at {m1f_idx}")
+    check("m1s 재발행(2회=정지 드롭+재정지)", len(m1s_idx) == 2, f"m1s at {m1s_idx}")
+    if m1f_idx and m1s_idx:
+        check("최종 정지 후 최종 재송신(마지막 m1s < 마지막 m1f)", m1s_idx[-1] < m1f_idx[-1],
+              f"m1s={m1s_idx} m1f={m1f_idx}")
+    check("재연결 2회 이상(연결 ≥3)", sim.connection_count >= 3, f"got {sim.connection_count}")
+
+
 def main():
     print("=" * 56)
     print("measure_kh_once 통합 테스트 (firmware_sim)")
@@ -339,6 +370,7 @@ def main():
     scenario_motor_no_complete()
     scenario_burst_recover()
     scenario_setref_exception()
+    scenario_motor_stop_drop()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
     print("=" * 56)
