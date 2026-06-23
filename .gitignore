@@ -19,3 +19,10 @@ pnpm-lock.yaml
 
 # Firecrawl cache
 .firecrawl/
+
+# reefCore 브리지 상태/자격
+bin/.reefcore_last
+reefcore.conf
+
+# 커뮤니티 펌웨어 바이너리(재배포 회피)
+firmware/*.bin

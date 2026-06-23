@@ -130,6 +130,79 @@ def log_kh(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp):
     print(f"[LOG] {DAT_FILE} ← {line}")
 
 
+def _reefcore_creds():
+    """reefCore 자격증명을 (user, pw, mac, tls_verify) 으로 반환. 없으면 (None, None, None, False).
+
+    우선순위: 환경변수 → 설정 파일(스케줄 작업이 env 를 못 볼 때 대비).
+    설정 파일 형식(한 줄에 KEY=VALUE): user=..., pass=..., mac=...(선택), tls_verify=0/1(선택).
+    값을 저장소에 커밋하지 않는다 — 설정 파일은 .gitignore 처리.
+    tls_verify: 브로커 인증서 검증 여부. 현재 8883 인증서가 만료 상태라 기본 0(검증 끔).
+                운영자가 인증서 갱신하면 conf 에 tls_verify=1 만 추가하면 검증 ON(재배포 불요).
+    """
+    def truthy(v): return str(v).strip().lower() in ('1', 'true', 'yes', 'on')
+    user = os.environ.get('REEFCORE_USER')
+    pw   = os.environ.get('REEFCORE_PASS')
+    if user and pw:
+        return (user, pw, os.environ.get('REEFCORE_MAC', 'b0cbd88ec880'),
+                truthy(os.environ.get('REEFCORE_TLS_VERIFY', '0')))
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in [os.environ.get('REEFCORE_CONF'), r'C:\dkh\reefcore.conf',
+              '/mnt/c/dkh/reefcore.conf', os.path.join(here, 'reefcore.conf')]:
+        try:
+            if p and os.path.exists(p):
+                conf = {}
+                for ln in open(p, encoding='utf-8'):
+                    ln = ln.strip()
+                    if ln and not ln.startswith('#') and '=' in ln:
+                        k, v = ln.split('=', 1)
+                        conf[k.strip().lower()] = v.strip()
+                u  = conf.get('user') or conf.get('reefcore_user')
+                pw2 = conf.get('pass') or conf.get('password') or conf.get('reefcore_pass')
+                if u and pw2:
+                    return (u, pw2, conf.get('mac', 'b0cbd88ec880'),
+                            truthy(conf.get('tls_verify', '0')))
+        except Exception:
+            pass
+    return None, None, None, False
+
+
+def publish_to_reefcore(tank_kh, temp):
+    """측정 직후 reefCore(reefChecker)에 dKH 를 best-effort 로 발행한다.
+
+    체커의 '최근 측정값' MQTT 토픽에 `dKH: <값> dKH | <온도>°C @ <시각>` 을 쏘면
+    백엔드가 파싱해 해당 체커의 dKH 측정 레코드를 만든다. 상세: docs/reefcore-integration.md
+    - 자격증명(env REEFCORE_USER/PASS 또는 설정파일)이 없으면 조용히 비활성(opt-in).
+    - paho 미설치·연결 실패 등 어떤 오류도 측정을 중단시키지 않는다(best-effort).
+    - tank_kh ≤ 0(에러/평탄 미도달)은 발행하지 않는다.
+    """
+    if tank_kh is None or tank_kh <= 0:
+        return                                    # 0=에러, 음수=미평탄 → 발행 안 함
+    user, pw, mac, tls_verify = _reefcore_creds()
+    if not user or not pw:
+        return                                    # opt-in: 자격 미설정이면 비활성
+    try:
+        import ssl as _ssl
+        import paho.mqtt.client as _mqtt
+        topic = f"reefcore-checker-{mac[-6:]}/sensor/{'_' * 16}/state"   # '최근 측정값'
+        summary = f"dKH: {tank_kh:.2f} dKH | {temp:.1f}°C @ {datetime.now():%Y-%m-%d %H:%M}"
+        cl = _mqtt.Client(client_id='reefkeeper-bridge', clean_session=True)
+        cl.username_pw_set(user, pw)
+        if tls_verify:
+            cl.tls_set(cert_reqs=_ssl.CERT_REQUIRED)   # 인증서 검증 ON (브로커 인증서 갱신 후)
+        else:
+            cl.tls_set(cert_reqs=_ssl.CERT_NONE)       # 브로커 인증서 만료 상태 → 검증 생략
+            cl.tls_insecure_set(True)
+        cl.connect('reef.anih.net', 8883, keepalive=30)
+        cl.loop_start()
+        info = cl.publish(topic, summary, qos=1, retain=True)
+        info.wait_for_publish(timeout=10)
+        cl.loop_stop(); cl.disconnect()
+        print(f"[reefCore] 발행: {summary}" if info.rc == 0
+              else f"[reefCore] 발행 실패 rc={info.rc}")
+    except Exception as e:
+        print(f"[reefCore] 발행 건너뜀(측정엔 영향 없음): {e}")
+
+
 def last_dat_is_error():
     """dkh.dat 마지막(비어있지 않은) 줄이 에러 표식(5개 값 전부 0)인지.
     파일 없음/빈 파일/파싱 실패면 False(정상 측정 진행)."""
@@ -652,6 +725,7 @@ def main():
 
     if result and all(v is not None for v in result):
         log_kh(hour, *result)
+        publish_to_reefcore(result[3], result[4])   # tank_kh, temp → reefCore(best-effort)
     else:
         log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0)
 
