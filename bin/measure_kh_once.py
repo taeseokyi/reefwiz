@@ -30,6 +30,14 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
         (ref 가 동시폭기로 이미 평형 근처라 빨리 끝남). 파킹 tank 는 ref 측정 후 마무리 배출.
   - ★무한 대기 방지: phase 별 PHASE_MAX_SECS·MEAS_MAX·연속실패 FAIL_MAX 상한,
     시리얼 read 타임아웃. 평탄 미도달 시 마지막값+경고로 종료(행 안 함).
+  - ★HC-06 블루투스 RF 순단 대응(사용자 설계 2026-06-23): 측정이 BT SPP(COM9)로 돌아 RF 링크가
+    간헐적으로 끊긴다(장시간 다운 없음; 펌웨어는 살아있고 드롭은 대개 '보낼 때 이미 끊겨 있음').
+      (예방) keepalive — HC-06 는 ~20초 무통신 시 링크가 끊기는 경향(조사: Arduino/Reddit 사례).
+             측정 간 30초·모터 60~85초 유휴 동안 빈 줄을 주기 송신해 링크를 깨워 둔다.
+      (send 정책) ①모든 명령 송신 전 연결확인(ensure_link=status 핑) ②끊겼으면 재연결(close→open)
+             ③보낸 뒤 연결문제(송신/수신 예외·응답 미수신)면 재연결 후 재시도 ④재시도 SEND_RETRY_MAX 회
+             ⑤모터는 재시도 시 먼저 정지(mNs) 후 재송신 → 미전달이든 진행중이든 중복 구동 방지.
+    calkh·calref(--setref) 모두 같은 send()/measure_until_flat 를 타므로 동일 적용.
   - ★규칙: 액체 이동(mXf/mXb) 직전 airoff. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
   - 오류/비정상 종료 시 비상 정리(_safe_cleanup): 에어 OFF + 측정챔버 배출 + KCl 소크 복원.
   ※ 측정 중 폭기라 절대 pH 에 흐름(streaming) 오프셋 — V3 이전 절대값과 직접 비교 금지
@@ -68,6 +76,20 @@ MEAS_INTERVAL  = 30      # 측정 간 간격(초) — 폭기 지속
 PHASE_MAX_SECS = 7200    # phase(tank/ref)별 최대 측정 시간(초)=2h. 2-phase라 총 4h(측정 갭 8h의 절반). 초과 시 마지막값+경고
 MEAS_MAX       = 240     # phase별 최대 측정 횟수(백스톱)=7200s/30s, PHASE_MAX_SECS와 정합
 FAIL_MAX       = 5       # 연속 측정 파싱 실패 허용 횟수 → 초과 시 phase 실패
+# ── ★HC-06 블루투스 RF 순단 대응(사용자 설계 2026-06-23): 측정이 BT SPP(COM9)로 돌아 RF 링크가
+#    간헐적으로 끊긴다(장시간 다운은 없음; 펌웨어는 살아있고 드롭은 대개 '보낼 때 이미 끊겨 있음').
+#    send() 정책: ①모든 명령 송신 전 연결확인(ensure_link) ②끊겼으면 재연결 ③보낸 뒤 연결문제면
+#    재연결 후 재시도 ④재시도 SEND_RETRY_MAX 회까지 ⑤모터는 재시도 시 정지(mNs) 후 재송신.
+RECONNECT_TRIES   = 5            # reconnect() 1회당 close→open 재연결 시도 횟수(진짜 순단은 1~2회면 붙음)
+RECONNECT_BACKOFF = (1, 1, 2, 2, 3)      # 시도별 대기(초). 범위 넘으면 마지막값 유지
+SEND_RETRY_MAX    = 3            # send() 1회당 재시도 횟수(꼭 3 아니어도 됨 — 튜닝 가능)
+# ★keepalive(2026-06-23, 조사 결과): HC-06 SPP 는 ~20초 무통신 시 링크가 끊기는 경향이 있다
+#   (Arduino/Reddit 사례: "유휴=드롭, 주기적 송신=안정"). 측정 간격 30초·모터 동작 60~85초가 그 임계를
+#   넘으므로, 유휴 동안 빈 줄('\r\n', 펌웨어가 line 544 에서 조용히 무시)을 주기 송신해 링크를 *예방적*으로
+#   깨운다 → 애초에 드롭을 줄이고, 그래도 끊기면 send() 의 재연결-재송신이 복구.
+KEEPALIVE_SECS    = 12           # 유휴 keepalive 간격(초) — HC-06 ~20초 임계 아래
+MEAS_READ_TIMEOUT = 20           # 측정 1회 '[OK]' 대기 상한(초). 펌웨어 측정 ~8초이므로 20초면 RF 드롭 판정
+LINK_PING_TIMEOUT = 3            # ensure_link/reconnect 의 status 핑 응답 대기 상한(초)
 
 DAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dkh.dat')
 LOG_FILE = r'C:\dkh\measure_kh.log' if os.name == 'nt' else None
@@ -132,35 +154,158 @@ def last_dat_is_error():
 # 시리얼 헬퍼
 # ─────────────────────────────────────────────
 
-def read_until(ser, stop_pattern, timeout=60.0):
+def read_until(ser, stop_pattern, timeout=60.0, keepalive=False):
+    """stop_pattern 수신까지 읽는다(라인 출력). ★keepalive=True 면 긴 무통신 구간(모터 동작 등)에서
+    KEEPALIVE_SECS 마다 빈 줄을 보내 HC-06 SPP 링크 유휴 드롭을 예방(펌웨어는 빈 줄 무시=무응답)."""
     lines = []
     deadline = time.time() + timeout
+    next_ka = time.time() + KEEPALIVE_SECS
     while time.time() < deadline:
         if ser.in_waiting:
             line = ser.readline().decode('utf-8', errors='replace').strip()
             if line:
                 print(f"    {line}")
                 lines.append(line)
+                next_ka = time.time() + KEEPALIVE_SECS    # 수신도 활동 → keepalive 미룸
                 if stop_pattern in line:
                     return lines
         else:
             time.sleep(0.02)
+            if keepalive and time.time() >= next_ka:
+                try:
+                    ser.write(b'\r\n')                     # 빈 줄 = 펌웨어 무시, 링크만 깨움
+                except (serial.SerialException, OSError):
+                    pass                                   # 끊겼으면 상위 명령의 재연결이 처리
+                next_ka = time.time() + KEEPALIVE_SECS
     print(f"    [TIMEOUT] '{stop_pattern}' 미수신")
     return lines
 
 
-def send(ser, cmd, stop_pattern=None, timeout=5.0):
+def keepalive_sleep(ser, secs):
+    """측정 간 유휴(secs초)를 KEEPALIVE_SECS 청크로 나눠 자며 매 청크 사이 빈 줄을 보내
+    HC-06 SPP 유휴 드롭을 예방한다(펌웨어 무응답). 다음 실제 측정이 살아있는 링크에서 시작."""
+    end = time.time() + secs
+    while True:
+        remaining = end - time.time()
+        if remaining <= 0:
+            break
+        time.sleep(min(KEEPALIVE_SECS, remaining))
+        if time.time() < end:                              # 마지막 청크 뒤엔 굳이 안 보냄
+            try:
+                ser.write(b'\r\n')
+            except (serial.SerialException, OSError):
+                pass
+
+
+def reconnect(ser, why):
+    """★RF 순단 대응: 포트 close→open 으로 HC-06 재연결 유도 + 부작용 없는 status 핑으로
+    펌웨어 응답 확인. 성공 True / RECONNECT_TRIES 모두 실패 시 False.
+    (장시간 RF 다운은 없다는 전제 — 보통 1~2시도면 붙음.)"""
+    print(f"    [RF] 링크 끊김 — {why} → 재연결 시도")
+    for i in range(1, RECONNECT_TRIES + 1):
+        time.sleep(RECONNECT_BACKOFF[min(i - 1, len(RECONNECT_BACKOFF) - 1)])
+        try:
+            if ser.is_open:
+                ser.close()
+        except Exception:
+            pass
+        try:
+            ser.open()
+            ser.reset_input_buffer()
+            ser.write(b'status\r\n')                       # 부작용 없는 핑(printStatus)
+            lines = read_until(ser, '============', timeout=LINK_PING_TIMEOUT)
+            if any('============' in ln for ln in lines):   # 펌웨어가 응답 = 링크 복구
+                ser.reset_input_buffer()
+                print(f"    [RF] 재연결 성공 (시도 {i}) — 펌웨어 응답 확인, 측정 재개")
+                return True
+            print(f"    [RF] 재연결 시도 {i}/{RECONNECT_TRIES}: 포트 열림이나 펌웨어 무응답 — 재시도")
+        except (serial.SerialException, OSError) as e:
+            print(f"    [RF] 재연결 시도 {i}/{RECONNECT_TRIES} 실패: {e}")
+    print(f"    ★[RF] 재연결 {RECONNECT_TRIES}회 모두 실패 — 링크 복구 불가")
+    return False
+
+
+def ensure_link(ser):
+    """★명령 송신 *직전* 링크 생존 확인(부작용 없는 status 핑, 출력 안 함). 죽었으면 reconnect.
+    실측(2026-06-23): 드롭은 대개 '보내려는 순간 이미 끊겨 있음'(통신 중엔 잘 안 끊김)이라,
+    죽은 링크에 write 하면 OS가 조용히 버퍼링→응답 타임아웃까지 허비/모터는 미전달인데 '완료 못 받음'으로
+    오인. 보내기 전 점검이 그 창을 닫는다(특히 모터=재송신 불가 명령에 필수)."""
+    try:
+        ser.reset_input_buffer()
+        ser.write(b'status\r\n')
+        deadline = time.time() + LINK_PING_TIMEOUT
+        while time.time() < deadline:
+            if ser.in_waiting:
+                if '============' in ser.readline().decode('utf-8', errors='replace'):
+                    ser.reset_input_buffer()
+                    return True
+            else:
+                time.sleep(0.02)
+    except (serial.SerialException, OSError):
+        pass
+    return reconnect(ser, "송신 전 점검: 링크 무응답")
+
+
+def _motor_index(cmd):
+    """'m1f:70'/'m2b:68' → 1/2. 모터 구동 명령이 아니면 None."""
+    m = re.match(r'm([1-4])[fb]:', cmd)
+    return int(m.group(1)) if m else None
+
+
+def _stop_motor(ser, idx):
+    """모터 재시도 *전* 진행 중일 수 있는 모터를 정지(mNs) → 재송신이 중복 구동 안 되게.
+    펌웨어 응답 '[M{idx}] 정지'(motorStopNow) 까지 흡수, 없으면 짧게 타임아웃(베스트에포트)."""
+    print(f"    [모터정지] m{idx}s (재시도 전 안전 정지)")
+    try:
+        ser.reset_input_buffer()
+        ser.write(f'm{idx}s\r\n'.encode())
+        read_until(ser, f'[M{idx}] 정지', timeout=3)
+    except (serial.SerialException, OSError):
+        pass
+
+
+def send(ser, cmd, stop_pattern=None, timeout=5.0, allow_reconnect=True, keepalive=False):
+    """명령 송신 후 stop_pattern 까지 수신. ★HC-06 RF 순단 대응(사용자 설계 2026-06-23):
+      1) 모든 명령은 보내기 전 ensure_link 로 연결 확인(드롭은 대개 '보낼 때 이미 끊김').
+      2) 끊겼으면 재연결한다.
+      3) 보낸 뒤 연결 문제(송신/수신 예외·응답 미수신)면 재연결 후 재시도.
+      4) 재시도는 SEND_RETRY_MAX 회까지.
+      5) 모터는 재시도 시 먼저 정지(mNs)하고 다시 명령한다(중복 구동 방지).
+    소진 후엔 기존 동작대로 (부분/빈) 결과 반환 → 상위 FAIL_MAX·상한·_motor_ok 가 처리.
+    keepalive=True 면 긴 응답 대기(모터) 동안 read_until 이 유휴 keepalive 송신."""
     print(f"\n→ {cmd}")
-    ser.write((cmd + '\r\n').encode())
-    if stop_pattern:
-        return read_until(ser, stop_pattern, timeout)
-    time.sleep(0.3)
+    motor_idx = _motor_index(cmd)
     lines = []
-    while ser.in_waiting:
-        line = ser.readline().decode('utf-8', errors='replace').strip()
-        if line:
-            print(f"    {line}")
-            lines.append(line)
+    for attempt in range(1, SEND_RETRY_MAX + 1):
+        if allow_reconnect:
+            ensure_link(ser)                       # 1)+2) 보내기 전 연결확인·필요시 재연결
+            if attempt > 1 and motor_idx is not None:
+                _stop_motor(ser, motor_idx)        # 5) 모터 재시도 전 정지 후 재송신
+        try:
+            ser.write((cmd + '\r\n').encode())
+            if not stop_pattern:
+                time.sleep(0.3)
+                lines = []
+                while ser.in_waiting:
+                    line = ser.readline().decode('utf-8', errors='replace').strip()
+                    if line:
+                        print(f"    {line}")
+                        lines.append(line)
+                return lines
+            lines = read_until(ser, stop_pattern, timeout, keepalive=keepalive)
+        except (serial.SerialException, OSError) as e:
+            # 송신/수신 중 링크 드롭 → 3)+4) 재시도(다음 루프 ensure_link 가 재연결).
+            print(f"    [RF] '{cmd}' 통신 오류: {e}")
+            if allow_reconnect and attempt < SEND_RETRY_MAX:
+                continue
+            raise
+        if any(stop_pattern in ln for ln in lines):
+            return lines
+        # 응답 미수신 → 3)+4) 재연결 후 재시도(다음 루프 ensure_link).
+        if allow_reconnect and attempt < SEND_RETRY_MAX:
+            print(f"    [RF] '{cmd}' 응답 미수신 → 재연결 후 재시도 ({attempt}/{SEND_RETRY_MAX})")
+            continue
+        return lines
     return lines
 
 
@@ -169,7 +314,9 @@ def send_motor(ser, motor_idx, cmd):
     duration = int(m.group(1)) if m else 60
     return send(ser, cmd,
                 stop_pattern=f'[모터{motor_idx}] 완료',
-                timeout=duration + 15)
+                timeout=duration + 15,
+                keepalive=True)   # 모터 동작(60~85s) 동안 링크 유휴 드롭 예방
+                                  # (송신 전 연결확인·재시도 시 모터정지는 send() 가 일괄 처리)
 
 
 def _motor_ok(lines, idx):
@@ -208,7 +355,7 @@ def measure_until_flat(ser, what):
     n = 0
     while True:
         n += 1
-        lines = send(ser, what, stop_pattern='[OK]', timeout=20)
+        lines = send(ser, what, stop_pattern='[OK]', timeout=MEAS_READ_TIMEOUT)
         ph = parse_ph(lines, label)
         if ph is None:
             fails += 1
@@ -242,7 +389,7 @@ def measure_until_flat(ser, what):
         if n >= MEAS_MAX:
             print(f"    [상한] {what} 측정 {MEAS_MAX}회 초과 — 미평탄, 마지막값 {last_ph} 채택")
             return last_ph, n, False
-        time.sleep(MEAS_INTERVAL)
+        keepalive_sleep(ser, MEAS_INTERVAL)   # 측정 간 30s 유휴 — keepalive 로 RF 링크 유지
 
 
 # ─────────────────────────────────────────────
