@@ -194,7 +194,7 @@ def publish_to_reefcore(tank_kh, temp):
             cl.tls_insecure_set(True)
         cl.connect('reef.anih.net', 8883, keepalive=30)
         cl.loop_start()
-        info = cl.publish(topic, summary, qos=1, retain=True)
+        info = cl.publish(topic, summary, qos=1, retain=False)
         info.wait_for_publish(timeout=10)
         cl.loop_stop(); cl.disconnect()
         print(f"[reefCore] 발행: {summary}" if info.rc == 0

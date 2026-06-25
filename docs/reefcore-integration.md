@@ -17,7 +17,7 @@ AquaWiz(reefKeeper)가 측정한 **탄산경도(dKH)** 를 **reefCore 생태계*
 ## 2. 아키텍처
 
 - **REST API**: `https://reefapi.anih.net`. 인증 `POST /auth/login {email, password}` → JWT(`Authorization: Bearer …`).
-- **측정값 주입 경로**: REST에는 측정값 **생성 엔드포인트가 없음**(measurements는 조회·메모만). 값은 **기기가 MQTT로 발행 → 백엔드가 수집**하는 단방향 구조.
+- **측정값 주입 경로**: 현재 채택 경로는 **기기가 MQTT로 발행 → 백엔드가 수집**. (정정 2026-06-25: 과거 "REST 생성 엔드포인트 없음"이라 적었으나, 실제로는 `POST /devices/{mac}/measurements {mode,value,unit,temp,measured_at,memo}`(ManualMeasurementRequest)가 **존재**한다. 이 경로는 retain 자체가 없어 유령 중복 위험이 없고 `measured_at` 을 명시할 수 있는 **더 깔끔한 대안**이나, REST 인증(JWT)이 필요하다. 현 conf 자격은 **MQTT 전용**(`/mqtt/auth` 로 검증)이라 `/auth/login` 에는 401 — 웹 계정 비번이 있어야 전환 가능. 미채택, 향후 옵션.)
 - **MQTT 브로커**: `reef.anih.net:8883` (MQTT over TLS). 여러 기기가 쓰는 **공유 브로커**.
 - **MQTT 인증**: reefCore **계정 자격** 사용 — username = 계정 이메일(`$REEFCORE_USER`), password = 계정 비번(`$REEFCORE_PASS`).
 - **기기 등록**(참고): `POST reefapi.anih.net/devices/register {mac, email, device_type}`. `device_type` ∈ `reefcore`/`checker`/`ato`/`module`. 펌웨어에 박힌 등록 키(`$REEFCORE_REG_KEY`)로 인가하는 것으로 추정.
@@ -49,7 +49,8 @@ reefcore-checker-<mac6>/sensor|select|switch|number/<엔티티>/state
 
 - **best-effort**: 자격 미설정·paho 미설치·연결 실패 등 어떤 오류도 측정을 중단시키지 않는다.
 - **dKH ≤ 0 은 발행 안 함** — `0`=측정 에러, 음수=평탄 미도달(V4 규약).
-- 발행은 `retain`·`qos=1`, 고유 client_id(`reefkeeper-bridge`)라 체커 세션을 끊지 않는다.
+- 발행은 **`retain=False`**·`qos=1`, 고유 client_id(`reefkeeper-bridge`)라 체커 세션을 끊지 않는다.
+  - ⚠️ **`retain=False` 가 중요하다.** 이 토픽은 단순 상태가 아니라 "수신 시 측정 레코드를 생성"하는 이벤트 토픽이라, `retain=True` 면 브로커가 보관한 옛 측정값을 **백엔드 재접속 때마다 재전달 → 유령 중복 레코드**를 만들 수 있다. 백엔드는 상시 접속(`/debug/state` 의 `mqtt_connected:true`)이라 `retain=False` 여도 발행이 정상 도달한다(2026-06-25 실측: retain=False 발행 후 `/debug/state` 의 '최근 측정값' 토픽이 즉시 갱신됨). 과거 `retain=True` 로 남았던 retained 메시지는 빈 retained 발행으로 클리어 완료.
 
 자격증명 로딩 우선순위(`_reefcore_creds()`): **환경변수 → 설정 파일**. 스케줄 작업이 사용자
 환경변수를 못 보는 경우가 있어 설정 파일 폴백을 둔다.
@@ -80,4 +81,4 @@ mac=<체커 MAC>
 
 - **자격증명은 환경변수로만.** `$REEFCORE_USER`/`$REEFCORE_PASS`를 코드·문서·저장소에 값으로 남기지 않습니다(저장소 public).
 - **브로커 인증서 만료**: 포트별로 인증서가 다르다. **웹(443)은 갱신됨**(Let's Encrypt YE2, ~2026-08-31)이나 **MQTT 브로커(8883)는 별개 인증서로 2026-05-03 만료** 상태(브로커가 갱신본을 안 물고 옛 인증서로 기동 중인 전형적 케이스). 따라서 브리지는 현재 `tls_verify=0`(CERT_NONE)로 접속. 운영자가 8883 브로커에 갱신 인증서 적용+리로드하면, conf 에 `tls_verify=1` 만 추가해 검증 ON(재배포 불요). ※KISTI 등 SSL 검사 게이트웨이(swg.*)는 보통 443만 가로채고 8883은 통과시키므로, 브라우저가 보는 "유효"는 웹(443) 인증서다.
-- 공유 브로커라 토픽 격리가 약합니다 — 구독 시 본인 체커 토픽(`reefcore-checker-<mac6>/#`)으로 한정하세요.
+- 공유 브로커라 구독 시 본인 체커 토픽(`reefcore-checker-<mac6>/#`)으로 한정하세요. (참고 2026-06-25: 브로커는 `POST /mqtt/auth`·`/mqtt/acl`·`/mqtt/superuser` HTTP 훅으로 인증/ACL을 백엔드에 위임하는 구조 — MAC 토픽 격리가 실제로 ACL로 강제될 여지가 있다(미검증). 다만 `GET /debug/state` 는 **인증 없이 전체 기기명 목록과 내 체커 전 토픽 상태를 노출**한다(자가 검증엔 유용했으나 정보 노출 면은 운영자 영역).)

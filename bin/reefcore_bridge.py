@@ -54,7 +54,7 @@ def main():
     c.username_pw_set(USER, PW)
     c.tls_set(cert_reqs=ssl.CERT_NONE); c.tls_insecure_set(True)  # 브로커 인증서 만료 상태
     c.connect(BROKER, PORT, keepalive=30); c.loop_start()
-    info = c.publish(TOPIC, summary, qos=1, retain=True)
+    info = c.publish(TOPIC, summary, qos=1, retain=False)
     info.wait_for_publish(timeout=10)
     c.loop_stop(); c.disconnect()
     if info.rc == 0:
