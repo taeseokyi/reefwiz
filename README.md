@@ -13,7 +13,7 @@
 
 | 제어기 |
 |:---:|
-| ![제어기](docs/images/reefkeeper-제어기.jpg) |
+| ![제어기](docs/images/reefwiz-제어기.jpg) |
 
 ### 주요 특징
 

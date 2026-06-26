@@ -29,7 +29,7 @@ def find_dkhfile():
     p = os.environ.get("REEFCORE_DKHFILE")
     if p and os.path.exists(p): return p
     for c in (r"C:\dkh\work\dkh.dat", "/mnt/c/dkh/work/dkh.dat",
-              os.path.expanduser("~/work/reefkeeper/dkh.dat")):
+              os.path.expanduser("~/work/reefwiz/dkh.dat")):
         if os.path.exists(c): return c
     sys.exit("dkh.dat 를 찾을 수 없음 (REEFCORE_DKHFILE 지정)")
 
@@ -50,7 +50,7 @@ def main():
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     summary = f"dKH: {dkh:.2f} dKH | {temp:.1f}°C @ {now}"
 
-    c = mqtt.Client(client_id="reefkeeper-bridge", clean_session=True)
+    c = mqtt.Client(client_id="reefwiz-bridge", clean_session=True)
     c.username_pw_set(USER, PW)
     c.tls_set(cert_reqs=ssl.CERT_NONE); c.tls_insecure_set(True)  # 브로커 인증서 만료 상태
     c.connect(BROKER, PORT, keepalive=30); c.loop_start()

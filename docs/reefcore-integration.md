@@ -2,7 +2,7 @@
 
 > 관련 문서: [프로젝트 개요 (README)](../README.md) | [자동화 구성](system-setup.md) | [측정 대장](measurement-ledger.md)
 
-AquaWiz(reefKeeper)가 측정한 **탄산경도(dKH)** 를 **reefCore 생태계**의 내 체커(reefChecker)에 측정값으로 올리는 연동입니다. 2026-06-23 메커니즘 검증·실측 성공.
+AquaWiz(reefWiz)가 측정한 **탄산경도(dKH)** 를 **reefCore 생태계**의 내 체커(reefChecker)에 측정값으로 올리는 연동입니다. 2026-06-23 메커니즘 검증·실측 성공.
 
 > ⚠️ **자격증명·시크릿은 이 문서에 값으로 적지 않습니다.** 모두 환경변수명으로만 표기하며, 공개 저장소에 실제 값을 커밋하지 않습니다.
 
@@ -12,7 +12,7 @@ AquaWiz(reefKeeper)가 측정한 **탄산경도(dKH)** 를 **reefCore 생태계*
 |---|---|
 | **reefCore** | 허브/클라우드 (앱·계정·DB). 사이트 `reef.anih.net` (React SPA) |
 | **reefChecker** | Hanna Checker HC 비색계 기반 ESPHome 기기 (dKH/Ca/Mg/NO3/PO4/pH 측정) |
-| **reefKeeper** | 본 프로젝트(AquaWiz). dKH를 위 생태계로 공급 |
+| **reefWiz** | 본 프로젝트(AquaWiz). dKH를 위 생태계로 공급 |
 
 ## 2. 아키텍처
 
@@ -39,7 +39,7 @@ reefcore-checker-<mac6>/sensor|select|switch|number/<엔티티>/state
 예시    : "dKH: 8.43 dKH | 27.2°C @ 2026-06-23 13:39"
 ```
 
-- 발행 시 **고유 client_id**(`reefkeeper-*`)를 쓰면 체커의 MQTT 세션을 끊지 않습니다.
+- 발행 시 **고유 client_id**(`reefwiz-*`)를 쓰면 체커의 MQTT 세션을 끊지 않습니다.
 - 대상 체커 MAC은 `$REEFCORE_MAC`(기본값=내 체커)로 지정. 토픽의 `<mac6>`는 MAC 끝 6자리.
 
 ## 4. 구현 — `measure_kh_once.py` 에 통합 (채택)
@@ -49,7 +49,7 @@ reefcore-checker-<mac6>/sensor|select|switch|number/<엔티티>/state
 
 - **best-effort**: 자격 미설정·paho 미설치·연결 실패 등 어떤 오류도 측정을 중단시키지 않는다.
 - **dKH ≤ 0 은 발행 안 함** — `0`=측정 에러, 음수=평탄 미도달(V4 규약).
-- 발행은 **`retain=False`**·`qos=1`, 고유 client_id(`reefkeeper-bridge`)라 체커 세션을 끊지 않는다.
+- 발행은 **`retain=False`**·`qos=1`, 고유 client_id(`reefwiz-bridge`)라 체커 세션을 끊지 않는다.
   - ⚠️ **`retain=False` 가 중요하다.** 이 토픽은 단순 상태가 아니라 "수신 시 측정 레코드를 생성"하는 이벤트 토픽이라, `retain=True` 면 브로커가 보관한 옛 측정값을 **백엔드 재접속 때마다 재전달 → 유령 중복 레코드**를 만들 수 있다. 백엔드는 상시 접속(`/debug/state` 의 `mqtt_connected:true`)이라 `retain=False` 여도 발행이 정상 도달한다(2026-06-25 실측: retain=False 발행 후 `/debug/state` 의 '최근 측정값' 토픽이 즉시 갱신됨). 과거 `retain=True` 로 남았던 retained 메시지는 빈 retained 발행으로 클리어 완료.
 
 자격증명 로딩 우선순위(`_reefcore_creds()`): **환경변수 → 설정 파일**. 스케줄 작업이 사용자
