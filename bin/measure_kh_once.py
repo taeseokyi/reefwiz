@@ -194,7 +194,11 @@ def publish_to_reefcore(tank_kh, temp):
         import paho.mqtt.client as _mqtt
         topic = f"reefcore-checker-{mac[-6:]}/sensor/{'_' * 16}/state"   # '최근 측정값'
         summary = f"dKH: {tank_kh:.2f} dKH | {temp:.1f}°C @ {datetime.now():%Y-%m-%d %H:%M}"
-        cl = _mqtt.Client(client_id='reefwiz-bridge', clean_session=True)
+        try:
+            cl = _mqtt.Client(_mqtt.CallbackAPIVersion.VERSION2,
+                              client_id='reefwiz-bridge', clean_session=True)
+        except AttributeError:
+            cl = _mqtt.Client(client_id='reefwiz-bridge', clean_session=True)  # paho-mqtt 1.x
         cl.username_pw_set(user, pw)
         if tls_verify:
             cl.tls_set(cert_reqs=_ssl.CERT_REQUIRED)   # 인증서 검증 ON (브로커 인증서 갱신 후)
