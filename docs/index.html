@@ -97,7 +97,12 @@
     text-align: center;
     color: var(--muted);
     font-size: 0.74rem;
-    margin: 0.5rem 0 0;
+    margin: 0.5rem 0;
+  }
+  h2.card-title {
+    font-size: 1rem;
+    margin: 0.1rem 0 0.4rem;
+    color: var(--teal-dark);
   }
 
   nav.doc-links {
@@ -148,6 +153,14 @@
       </div>
       <p class="chart-caption">그래프를 눌러보거나 손가락으로 짚으면 각 지점의 값이 보입니다</p>
       <noscript><img class="graph" src="images/dkh_trend_mobile.png" alt="dKH 추세 그래프"></noscript>
+    </section>
+
+    <section class="graph-card">
+      <h2 class="card-title">🔬 최근 측정 과정 (평탄 추종)</h2>
+      <p class="chart-caption" id="plateauMeta">불러오는 중…</p>
+      <div class="chart-wrap" id="plateauWrap">
+        <canvas id="plateauChart"></canvas>
+      </div>
     </section>
 
     <nav class="doc-links">
@@ -262,6 +275,81 @@
       });
     })
     .catch(() => {});
+
+  fetch("dkh_plateau.json", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((d) => {
+      const metaEl = document.getElementById("plateauMeta");
+      if (!d.tank.length && !d.ref.length) {
+        metaEl.textContent = "표시할 측정 과정 데이터가 없습니다";
+        document.getElementById("plateauWrap").style.display = "none";
+        return;
+      }
+      const fmtFlat = (arr, flatN) =>
+        flatN ? flatN + "회(" + arr.find((p) => p.n === flatN).elapsed + "s)" : "미도달";
+      metaEl.textContent =
+        d.run_started + " · " + (d.mode === "calref" ? "calref" : "calkh") +
+        " · tank " + fmtFlat(d.tank, d.tank_flat_n) +
+        " / ref " + fmtFlat(d.ref, d.ref_flat_n) + " 평탄 도달";
+
+      const mkPointColors = (arr, flatN, baseColor) =>
+        arr.map((p) => (p.n === flatN ? "#1f9e4d" : baseColor));
+      const mkPointRadius = (arr, flatN) =>
+        arr.map((p) => (p.n === flatN ? 6 : 2.5));
+
+      new Chart(document.getElementById("plateauChart"), {
+        type: "line",
+        data: {
+          datasets: [
+            {
+              label: "tank",
+              data: d.tank.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n })),
+              borderColor: "#12808f",
+              backgroundColor: "#12808f",
+              pointBackgroundColor: mkPointColors(d.tank, d.tank_flat_n, "#12808f"),
+              pointRadius: mkPointRadius(d.tank, d.tank_flat_n),
+              pointHoverRadius: 7,
+              tension: 0.2,
+            },
+            {
+              label: "ref",
+              data: d.ref.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n })),
+              borderColor: "#7a5ea8",
+              backgroundColor: "#7a5ea8",
+              pointBackgroundColor: mkPointColors(d.ref, d.ref_flat_n, "#7a5ea8"),
+              pointRadius: mkPointRadius(d.ref, d.ref_flat_n),
+              pointHoverRadius: 7,
+              tension: 0.2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "nearest", axis: "x", intersect: false },
+          plugins: {
+            legend: { position: "bottom", labels: { boxHeight: 6, font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                title: (items) => items[0].dataset.label + " " + items[0].raw.n + "회",
+                label: (item) => {
+                  const flatN = item.dataset.label === "tank" ? d.tank_flat_n : d.ref_flat_n;
+                  const flat = item.raw.n === flatN ? " (평탄 판정)" : "";
+                  return "pH " + item.raw.y.toFixed(3) + " · " + item.raw.x + "s" + flat;
+                },
+              },
+            },
+          },
+          scales: {
+            x: { type: "linear", title: { display: true, text: "경과 시간(초, 각 phase 시작 기준)" } },
+            y: { title: { display: true, text: "pH" } },
+          },
+        },
+      });
+    })
+    .catch(() => {
+      document.getElementById("plateauMeta").textContent = "불러오지 못했습니다";
+    });
 </script>
 </body>
 </html>

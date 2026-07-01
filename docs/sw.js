@@ -26,7 +26,10 @@ self.addEventListener("activate", (event) => {
 // 나머지(앱 셸)는 캐시 우선.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  const isLiveData = url.pathname.includes("dkh_trend") || url.pathname.endsWith("dkh_latest.json");
+  const isLiveData = url.pathname.includes("dkh_trend") ||
+    url.pathname.endsWith("dkh_latest.json") ||
+    url.pathname.endsWith("dkh_series.json") ||
+    url.pathname.endsWith("dkh_plateau.json");
 
   if (isLiveData) {
     event.respondWith(
