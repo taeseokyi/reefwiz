@@ -88,7 +88,7 @@ def plot(rows, out_path, mobile=False):
     h2, l2 = ax2.get_legend_handles_labels()
     ax1.legend(h1 + h2, l1 + l2, loc="best", fontsize=fs_legend)
 
-    title = f"최근 dKH 추세 (최근 {total}건)" if mobile else f"KH 측정 대장 (dkh.dat) — {total}건"
+    title = f"최근 dKH 추세 (최근 {total}건)" if mobile else f"KH 측정 대장 (dkh.dat) — 최근 {total}건"
     ax1.set_title(title, fontsize=fs_title)
     fig.tight_layout()
     fig.savefig(out_path, dpi=fig.dpi)

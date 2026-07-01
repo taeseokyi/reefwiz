@@ -6,7 +6,7 @@
 
 ![dKH 추세](images/dkh_trend.png)
 
-*하루 3회(05/13/21시) 측정 결과 자동 반영. WSL이 주기적으로 Windows 원본 `dkh.dat`을 [`data/dkh.dat`](../data/dkh.dat)로 동기화·push하면, GitHub Actions([`plot-dkh.yml`](../.github/workflows/plot-dkh.yml))가 이 그래프를 다시 그려 커밋한다 — 최대 수십 분 지연.*
+*하루 3회(05/13/21시) 측정 결과 자동 반영, 최근 2주(약 42건)만 표시. WSL이 주기적으로 Windows 원본 `dkh.dat`을 [`data/dkh.dat`](../data/dkh.dat)로 동기화·push하면, GitHub Actions([`plot-dkh.yml`](../.github/workflows/plot-dkh.yml))가 이 그래프를 다시 그려 커밋한다 — 최대 수십 분 지연. 전체 이력은 [`data/dkh.dat`](../data/dkh.dat) 원본 참조.*
 
 ΔpH/dKH 검증을 계속하려면 "각 측정이 어떤 코드·환경에서 나왔는가"를 정확히 알아야 한다.
 git 커밋만으로는 부족하다 — **6/16 13:00 변경(STABLE·EPS)과 v2 재작성은 커밋되지 않고 작업트리에서만

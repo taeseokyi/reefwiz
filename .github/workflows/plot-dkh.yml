@@ -32,8 +32,9 @@ jobs:
 
       - name: 그래프·최신값·시리즈 렌더링
         run: |
-          python3 bin/plot_dkh.py data/dkh.dat -o docs/images/dkh_trend.png --json docs/dkh_latest.json
-          python3 bin/plot_dkh.py data/dkh.dat -o docs/images/dkh_trend_mobile.png --recent 60 --mobile --series-json docs/dkh_series.json
+          # 최근 2주(하루 3회 기준 42건) — dkh.dat에 날짜가 없어 "회수"로 근사
+          python3 bin/plot_dkh.py data/dkh.dat -o docs/images/dkh_trend.png --recent 42 --json docs/dkh_latest.json
+          python3 bin/plot_dkh.py data/dkh.dat -o docs/images/dkh_trend_mobile.png --recent 42 --mobile --series-json docs/dkh_series.json
 
       - name: 변경분 커밋
         run: |
