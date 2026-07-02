@@ -83,12 +83,6 @@
     box-shadow: 0 6px 18px rgba(13, 90, 102, 0.12);
     margin-bottom: 1.2rem;
   }
-  section.graph-card img.graph {
-    width: 100%;
-    height: auto;
-    border-radius: 10px;
-    display: block;
-  }
   .chart-wrap {
     position: relative;
     height: 270px;
@@ -152,7 +146,7 @@
         <canvas id="dkhChart"></canvas>
       </div>
       <p class="chart-caption">그래프를 눌러보거나 손가락으로 짚으면 각 지점의 값이 보입니다</p>
-      <noscript><img class="graph" src="images/dkh_trend_mobile.png" alt="dKH 추세 그래프"></noscript>
+      <noscript><p class="chart-caption">그래프를 보려면 JavaScript를 켜야 합니다.</p></noscript>
     </section>
 
     <section class="graph-card">

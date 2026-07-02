@@ -1,4 +1,4 @@
-name: dKH 그래프 렌더링
+name: dKH 데이터 갱신
 
 on:
   push:
@@ -24,22 +24,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 폰트·의존성 설치
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y fonts-nanum
-          pip install matplotlib
-
-      - name: 그래프·최신값·시리즈 렌더링
+      - name: 최신값·시리즈 JSON 생성
         run: |
           # 최근 2주(하루 3회 기준 42건) — dkh.dat에 날짜가 없어 "회수"로 근사
-          python3 bin/plot_dkh.py data/dkh.dat -o docs/images/dkh_trend.png --recent 42 --json docs/dkh_latest.json
-          python3 bin/plot_dkh.py data/dkh.dat -o docs/images/dkh_trend_mobile.png --recent 42 --mobile --series-json docs/dkh_series.json
+          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent 42
 
       - name: 변경분 커밋
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/images/dkh_trend.png docs/images/dkh_trend_mobile.png docs/dkh_latest.json docs/dkh_series.json
-          git diff --cached --quiet || git commit -m "chore: dKH 그래프·최신값 자동 갱신"
+          git add docs/dkh_latest.json docs/dkh_series.json
+          git diff --cached --quiet || git commit -m "chore: dKH 최신값 자동 갱신"
           git push
