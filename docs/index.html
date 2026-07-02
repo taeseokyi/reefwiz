@@ -99,6 +99,29 @@
     color: var(--teal-dark);
   }
 
+  .range-toggle {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+  }
+  .range-btn {
+    border: 1px solid var(--teal-light);
+    background: transparent;
+    color: var(--teal-dark);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .range-btn.active {
+    background: var(--teal-light);
+    color: #fff;
+  }
+
   nav.doc-links {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -142,6 +165,11 @@
     <p class="updated" id="updated">최신값 불러오는 중…</p>
 
     <section class="graph-card">
+      <div class="range-toggle" id="dkhRangeToggle" role="group" aria-label="기간 선택">
+        <button type="button" class="range-btn" data-range="3">3일</button>
+        <button type="button" class="range-btn active" data-range="7">7일</button>
+        <button type="button" class="range-btn" data-range="all">전체</button>
+      </div>
       <div class="chart-wrap">
         <canvas id="dkhChart"></canvas>
       </div>
@@ -152,6 +180,10 @@
     <section class="graph-card">
       <h2 class="card-title">🔬 최근 측정 과정 (평탄 추종)</h2>
       <p class="chart-caption" id="plateauMeta">불러오는 중…</p>
+      <div class="range-toggle" id="plateauZoomToggle" role="group" aria-label="확대 보기">
+        <button type="button" class="range-btn active" data-zoom="0">전체 보기</button>
+        <button type="button" class="range-btn" data-zoom="1">🔍 말미 확대(마지막 15회)</button>
+      </div>
       <div class="chart-wrap" id="plateauWrap">
         <canvas id="plateauChart"></canvas>
       </div>
@@ -195,22 +227,27 @@
 
   fetch("dkh_series.json", { cache: "no-store" })
     .then((r) => r.json())
-    .then((series) => {
-      const labels = series.map((p) => p.hh);
-      const pointColors = series.map((p) => (p.is_flat ? "#12808f" : "#c0392b"));
+    .then((fullSeries) => {
+      // dkh.dat 에는 날짜가 없어(시각만 기록) "최근 N일"은 하루 3회 측정 기준의 근사치다.
+      const MEASURES_PER_DAY = 3;
+      let currentSeries = fullSeries;
+
+      const allBtn = document.querySelector('#dkhRangeToggle .range-btn[data-range="all"]');
+      if (allBtn) allBtn.textContent = "전체(" + Math.round(fullSeries.length / MEASURES_PER_DAY) + "일)";
+
       const ctx = document.getElementById("dkhChart");
-      new Chart(ctx, {
+      const chart = new Chart(ctx, {
         type: "line",
         data: {
-          labels,
+          labels: currentSeries.map((p) => p.hh),
           datasets: [
             {
               label: "수조 dKH",
-              data: series.map((p) => p.tank_kh),
+              data: currentSeries.map((p) => p.tank_kh),
               borderColor: "#12808f",
               backgroundColor: "#12808f",
-              pointBackgroundColor: pointColors,
-              pointBorderColor: pointColors,
+              pointBackgroundColor: currentSeries.map((p) => (p.is_flat ? "#12808f" : "#c0392b")),
+              pointBorderColor: currentSeries.map((p) => (p.is_flat ? "#12808f" : "#c0392b")),
               pointRadius: 3,
               pointHoverRadius: 5,
               tension: 0.15,
@@ -218,7 +255,7 @@
             },
             {
               label: "기준(ref) dKH",
-              data: series.map((p) => p.ref_kh),
+              data: currentSeries.map((p) => p.ref_kh),
               borderColor: "#94a3a8",
               borderDash: [5, 4],
               pointRadius: 0,
@@ -227,7 +264,7 @@
             },
             {
               label: "온도(°C)",
-              data: series.map((p) => p.temp),
+              data: currentSeries.map((p) => p.temp),
               borderColor: "#e08a2c",
               borderDash: [2, 3],
               pointRadius: 0,
@@ -244,9 +281,9 @@
             legend: { position: "bottom", labels: { boxHeight: 6, font: { size: 11 } } },
             tooltip: {
               callbacks: {
-                title: (items) => "최근 측정 " + series[items[0].dataIndex].hh + "시",
+                title: (items) => "최근 측정 " + currentSeries[items[0].dataIndex].hh + "시",
                 label: (item) => {
-                  const p = series[item.dataIndex];
+                  const p = currentSeries[item.dataIndex];
                   if (item.dataset.label === "수조 dKH") {
                     return "수조 dKH: " + p.tank_kh.toFixed(3) + (p.is_flat ? "" : " (평탄 미도달)");
                   }
@@ -267,6 +304,26 @@
           },
         },
       });
+
+      document.getElementById("dkhRangeToggle").addEventListener("click", (e) => {
+        const btn = e.target.closest(".range-btn");
+        if (!btn) return;
+        document
+          .querySelectorAll("#dkhRangeToggle .range-btn")
+          .forEach((b) => b.classList.toggle("active", b === btn));
+        const range = btn.dataset.range;
+        currentSeries = range === "all" ? fullSeries : fullSeries.slice(-Number(range) * MEASURES_PER_DAY);
+        chart.data.labels = currentSeries.map((p) => p.hh);
+        chart.data.datasets[0].data = currentSeries.map((p) => p.tank_kh);
+        chart.data.datasets[0].pointBackgroundColor = currentSeries.map((p) => (p.is_flat ? "#12808f" : "#c0392b"));
+        chart.data.datasets[0].pointBorderColor = chart.data.datasets[0].pointBackgroundColor;
+        chart.data.datasets[1].data = currentSeries.map((p) => p.ref_kh);
+        chart.data.datasets[2].data = currentSeries.map((p) => p.temp);
+        chart.update();
+      });
+
+      // 기본값 7일로 초기 렌더
+      document.querySelector('#dkhRangeToggle .range-btn[data-range="7"]').click();
     })
     .catch(() => {});
 
@@ -274,9 +331,11 @@
     .then((r) => r.json())
     .then((d) => {
       const metaEl = document.getElementById("plateauMeta");
+      const zoomToggle = document.getElementById("plateauZoomToggle");
       if (!d.tank.length && !d.ref.length) {
         metaEl.textContent = "표시할 측정 과정 데이터가 없습니다";
         document.getElementById("plateauWrap").style.display = "none";
+        zoomToggle.style.display = "none";
         return;
       }
       const fmtPhase = (arr, flatN) => {
@@ -295,54 +354,85 @@
       const mkPointRadius = (arr, flatN) =>
         arr.map((p) => (p.n === flatN ? 6 : 2.5));
 
-      new Chart(document.getElementById("plateauChart"), {
-        type: "line",
-        data: {
-          datasets: [
-            {
-              label: "tank",
-              data: d.tank.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n })),
-              borderColor: "#12808f",
-              backgroundColor: "#12808f",
-              pointBackgroundColor: mkPointColors(d.tank, d.tank_flat_n, "#12808f"),
-              pointRadius: mkPointRadius(d.tank, d.tank_flat_n),
-              pointHoverRadius: 7,
-              tension: 0.2,
-            },
-            {
-              label: "ref",
-              data: d.ref.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n })),
-              borderColor: "#7a5ea8",
-              backgroundColor: "#7a5ea8",
-              pointBackgroundColor: mkPointColors(d.ref, d.ref_flat_n, "#7a5ea8"),
-              pointRadius: mkPointRadius(d.ref, d.ref_flat_n),
-              pointHoverRadius: 7,
-              tension: 0.2,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: "nearest", axis: "x", intersect: false },
-          plugins: {
-            legend: { position: "bottom", labels: { boxHeight: 6, font: { size: 11 } } },
-            tooltip: {
-              callbacks: {
-                title: (items) => items[0].dataset.label + " " + items[0].raw.n + "회",
-                label: (item) => {
-                  const flatN = item.dataset.label === "tank" ? d.tank_flat_n : d.ref_flat_n;
-                  const flat = item.raw.n === flatN ? " (평탄 판정)" : "";
-                  return "pH " + item.raw.y.toFixed(3) + " · " + item.raw.x + "s" + flat;
+      // 확대 모드: 각 계열의 마지막 TAIL_N회만, 그 계열 자신의 마지막 시점을 0초로 잡아
+      // (tank/ref 진행 시간이 서로 달라도) 종료 직전 구간만 정밀하게 비교할 수 있게 한다.
+      const TAIL_N = 15;
+      const seriesPoints = (arr, zoomed) => {
+        if (!zoomed || arr.length === 0) return arr.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n }));
+        const tail = arr.slice(-TAIL_N);
+        const originShift = tail[tail.length - 1].elapsed;
+        return tail.map((p) => ({ x: p.elapsed - originShift, y: p.ph, n: p.n }));
+      };
+
+      let plateauChart = null;
+      const renderPlateau = (zoomed) => {
+        if (plateauChart) plateauChart.destroy();
+        plateauChart = new Chart(document.getElementById("plateauChart"), {
+          type: "line",
+          data: {
+            datasets: [
+              {
+                label: "tank",
+                data: seriesPoints(d.tank, zoomed),
+                borderColor: "#12808f",
+                backgroundColor: "#12808f",
+                pointBackgroundColor: mkPointColors(d.tank, d.tank_flat_n, "#12808f"),
+                pointRadius: mkPointRadius(d.tank, d.tank_flat_n),
+                pointHoverRadius: 7,
+                tension: 0.2,
+              },
+              {
+                label: "ref",
+                data: seriesPoints(d.ref, zoomed),
+                borderColor: "#7a5ea8",
+                backgroundColor: "#7a5ea8",
+                pointBackgroundColor: mkPointColors(d.ref, d.ref_flat_n, "#7a5ea8"),
+                pointRadius: mkPointRadius(d.ref, d.ref_flat_n),
+                pointHoverRadius: 7,
+                tension: 0.2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "nearest", axis: "x", intersect: false },
+            plugins: {
+              legend: { position: "bottom", labels: { boxHeight: 6, font: { size: 11 } } },
+              tooltip: {
+                callbacks: {
+                  title: (items) => items[0].dataset.label + " " + items[0].raw.n + "회",
+                  label: (item) => {
+                    const flatN = item.dataset.label === "tank" ? d.tank_flat_n : d.ref_flat_n;
+                    const flat = item.raw.n === flatN ? " (평탄 판정)" : "";
+                    return "pH " + item.raw.y.toFixed(3) + " · " + item.raw.x + "s" + flat;
+                  },
                 },
               },
             },
+            scales: {
+              x: {
+                type: "linear",
+                title: {
+                  display: true,
+                  text: zoomed
+                    ? "각 계열 종료 시점 기준 경과(초) · 마지막 " + TAIL_N + "회"
+                    : "경과 시간(초, 각 phase 시작 기준)",
+                },
+              },
+              y: { title: { display: true, text: "pH" } },
+            },
           },
-          scales: {
-            x: { type: "linear", title: { display: true, text: "경과 시간(초, 각 phase 시작 기준)" } },
-            y: { title: { display: true, text: "pH" } },
-          },
-        },
+        });
+      };
+
+      renderPlateau(false);
+
+      zoomToggle.addEventListener("click", (e) => {
+        const btn = e.target.closest(".range-btn");
+        if (!btn) return;
+        zoomToggle.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b === btn));
+        renderPlateau(btn.dataset.zoom === "1");
       });
     })
     .catch(() => {
