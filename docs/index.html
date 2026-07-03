@@ -121,6 +121,29 @@
     background: var(--teal-light);
     color: #fff;
   }
+  .range-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .run-picker {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .run-picker select {
+    border: 1px solid var(--teal-light);
+    background: var(--card);
+    color: var(--teal-dark);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.32rem 0.6rem;
+    border-radius: 999px;
+    max-width: 65%;
+  }
 
   nav.doc-links {
     display: grid;
@@ -178,7 +201,12 @@
     </section>
 
     <section class="graph-card">
-      <h2 class="card-title">🔬 최근 측정 과정 (평탄 추종)</h2>
+      <h2 class="card-title">🔬 측정 과정 (평탄 추종) · 최근 14일</h2>
+      <div class="run-picker" id="plateauRunPicker">
+        <button type="button" class="range-btn" id="plateauPrev" aria-label="이전(과거) 측정">◀</button>
+        <select id="plateauRunSelect" aria-label="측정 회차 선택"></select>
+        <button type="button" class="range-btn" id="plateauNext" aria-label="다음(최신) 측정">▶</button>
+      </div>
       <p class="chart-caption" id="plateauMeta">불러오는 중…</p>
       <div class="range-toggle" id="plateauZoomToggle" role="group" aria-label="확대 보기">
         <button type="button" class="range-btn active" data-zoom="0">전체 보기</button>
@@ -327,27 +355,39 @@
     })
     .catch(() => {});
 
-  fetch("dkh_plateau.json", { cache: "no-store" })
+  fetch("dkh_plateau_history.json", { cache: "no-store" })
     .then((r) => r.json())
-    .then((d) => {
+    .then((allRuns) => {
       const metaEl = document.getElementById("plateauMeta");
       const zoomToggle = document.getElementById("plateauZoomToggle");
-      if (!d.tank.length && !d.ref.length) {
+      const runPicker = document.getElementById("plateauRunPicker");
+      const runSelect = document.getElementById("plateauRunSelect");
+      const prevBtn = document.getElementById("plateauPrev");
+      const nextBtn = document.getElementById("plateauNext");
+      // 오래된 것 → 최신 순 배열(최근 14일 = 최대 42런, 동기화 쪽에서 잘라서 옴)
+      const runs = allRuns.filter((d) => d.tank.length || d.ref.length);
+      if (!runs.length) {
         metaEl.textContent = "표시할 측정 과정 데이터가 없습니다";
         document.getElementById("plateauWrap").style.display = "none";
         zoomToggle.style.display = "none";
+        runPicker.style.display = "none";
         return;
       }
-      const fmtPhase = (arr, flatN) => {
-        if (flatN) return flatN + "회(" + arr.find((p) => p.n === flatN).elapsed + "s) 평탄";
-        if (arr.length === 0) return d.completed ? "미실행" : "대기중";
-        return arr.length + "회" + (d.completed ? " · 상한 도달(미도달)" : " · 진행 중");
+
+      // 셀렉트 옵션은 최신이 맨 위(값 = runs 인덱스)
+      const runLabel = (d) => {
+        const when = d.run_started ? d.run_started.slice(5, 16) : "시각 미상"; // "07-03 13:00"
+        return when + " · " + (d.mode === "calref" ? "calref" : "calkh") + (d.completed ? "" : " ⏳");
       };
-      metaEl.textContent =
-        d.run_started + " · " + (d.mode === "calref" ? "calref" : "calkh") +
-        (d.completed ? "" : " · ⏳측정 진행 중") +
-        " · tank " + fmtPhase(d.tank, d.tank_flat_n) +
-        " / ref " + fmtPhase(d.ref, d.ref_flat_n);
+      for (let i = runs.length - 1; i >= 0; i--) {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = runLabel(runs[i]);
+        runSelect.appendChild(opt);
+      }
+
+      let currentIdx = runs.length - 1; // 기본 = 최신 런
+      let zoomed = false;
 
       const mkPointColors = (arr, flatN, baseColor) =>
         arr.map((p) => (p.n === flatN ? "#1f9e4d" : baseColor));
@@ -357,7 +397,7 @@
       // 확대 모드: 각 계열의 마지막 TAIL_N회만, 그 계열 자신의 마지막 시점을 0초로 잡아
       // (tank/ref 진행 시간이 서로 달라도) 종료 직전 구간만 정밀하게 비교할 수 있게 한다.
       const TAIL_N = 15;
-      const seriesPoints = (arr, zoomed) => {
+      const seriesPoints = (arr) => {
         if (!zoomed || arr.length === 0) return arr.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n }));
         const tail = arr.slice(-TAIL_N);
         const originShift = tail[tail.length - 1].elapsed;
@@ -365,7 +405,7 @@
       };
 
       let plateauChart = null;
-      const renderPlateau = (zoomed) => {
+      const renderPlateau = (d) => {
         if (plateauChart) plateauChart.destroy();
         plateauChart = new Chart(document.getElementById("plateauChart"), {
           type: "line",
@@ -373,7 +413,7 @@
             datasets: [
               {
                 label: "tank",
-                data: seriesPoints(d.tank, zoomed),
+                data: seriesPoints(d.tank),
                 borderColor: "#12808f",
                 backgroundColor: "#12808f",
                 pointBackgroundColor: mkPointColors(d.tank, d.tank_flat_n, "#12808f"),
@@ -383,7 +423,7 @@
               },
               {
                 label: "ref",
-                data: seriesPoints(d.ref, zoomed),
+                data: seriesPoints(d.ref),
                 borderColor: "#7a5ea8",
                 backgroundColor: "#7a5ea8",
                 pointBackgroundColor: mkPointColors(d.ref, d.ref_flat_n, "#7a5ea8"),
@@ -426,13 +466,42 @@
         });
       };
 
-      renderPlateau(false);
+      const showRun = () => {
+        const d = runs[currentIdx];
+        runSelect.value = String(currentIdx);
+        prevBtn.disabled = currentIdx === 0;
+        nextBtn.disabled = currentIdx === runs.length - 1;
+        const fmtPhase = (arr, flatN) => {
+          if (flatN) return flatN + "회(" + arr.find((p) => p.n === flatN).elapsed + "s) 평탄";
+          if (arr.length === 0) return d.completed ? "미실행" : "대기중";
+          return arr.length + "회" + (d.completed ? " · 상한 도달(미도달)" : " · 진행 중");
+        };
+        metaEl.textContent =
+          d.run_started + " · " + (d.mode === "calref" ? "calref" : "calkh") +
+          (d.completed ? "" : " · ⏳측정 진행 중") +
+          " · tank " + fmtPhase(d.tank, d.tank_flat_n) +
+          " / ref " + fmtPhase(d.ref, d.ref_flat_n);
+        renderPlateau(d);
+      };
 
+      showRun();
+
+      runSelect.addEventListener("change", () => {
+        currentIdx = Number(runSelect.value);
+        showRun();
+      });
+      prevBtn.addEventListener("click", () => {
+        if (currentIdx > 0) { currentIdx--; showRun(); }
+      });
+      nextBtn.addEventListener("click", () => {
+        if (currentIdx < runs.length - 1) { currentIdx++; showRun(); }
+      });
       zoomToggle.addEventListener("click", (e) => {
         const btn = e.target.closest(".range-btn");
         if (!btn) return;
         zoomToggle.querySelectorAll(".range-btn").forEach((b) => b.classList.toggle("active", b === btn));
-        renderPlateau(btn.dataset.zoom === "1");
+        zoomed = btn.dataset.zoom === "1";
+        showRun();
       });
     })
     .catch(() => {
