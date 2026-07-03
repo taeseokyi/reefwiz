@@ -246,8 +246,11 @@
       document.getElementById("temp").textContent = d.temp.toFixed(1) + "°C";
       const tankEl = document.getElementById("tankKh");
       if (!d.is_flat) tankEl.classList.add("not-flat");
+      const when = d.date
+        ? Number(d.date.slice(5, 7)) + "/" + Number(d.date.slice(8, 10)) + " " + d.hh + "시"
+        : d.hh + "시";
       document.getElementById("updated").textContent =
-        "최근 측정 " + d.hh + "시" + (d.is_flat ? "" : " · 평탄 미도달");
+        "최근 측정 " + when + (d.is_flat ? "" : " · 평탄 미도달");
     })
     .catch(() => {
       document.getElementById("updated").textContent = "최신값을 불러오지 못했습니다";
@@ -257,8 +260,15 @@
     .then((r) => r.json())
     .then((fullSeries) => {
       // dkh.dat 에는 날짜가 없어(시각만 기록) "최근 N일"은 하루 3회 측정 기준의 근사치다.
+      // 날짜(date)는 Actions 쪽에서 동기화 커밋 시각으로 복원해 붙는다(없으면 시각만 표시).
       const MEASURES_PER_DAY = 3;
       let currentSeries = fullSeries;
+      const axisLabel = (p) =>
+        (p.date ? Number(p.date.slice(5, 7)) + "/" + Number(p.date.slice(8, 10)) + " " : "") + p.hh + "시";
+      const tooltipTitle = (p) =>
+        p.date
+          ? Number(p.date.slice(5, 7)) + "월 " + Number(p.date.slice(8, 10)) + "일 " + p.hh + "시 측정"
+          : "최근 측정 " + p.hh + "시";
 
       const allBtn = document.querySelector('#dkhRangeToggle .range-btn[data-range="all"]');
       if (allBtn) allBtn.textContent = "전체(" + Math.round(fullSeries.length / MEASURES_PER_DAY) + "일)";
@@ -267,7 +277,7 @@
       const chart = new Chart(ctx, {
         type: "line",
         data: {
-          labels: currentSeries.map((p) => p.hh),
+          labels: currentSeries.map(axisLabel),
           datasets: [
             {
               label: "수조 dKH",
@@ -309,7 +319,7 @@
             legend: { position: "bottom", labels: { boxHeight: 6, font: { size: 11 } } },
             tooltip: {
               callbacks: {
-                title: (items) => "최근 측정 " + currentSeries[items[0].dataIndex].hh + "시",
+                title: (items) => tooltipTitle(currentSeries[items[0].dataIndex]),
                 label: (item) => {
                   const p = currentSeries[item.dataIndex];
                   if (item.dataset.label === "수조 dKH") {
@@ -341,7 +351,7 @@
           .forEach((b) => b.classList.toggle("active", b === btn));
         const range = btn.dataset.range;
         currentSeries = range === "all" ? fullSeries : fullSeries.slice(-Number(range) * MEASURES_PER_DAY);
-        chart.data.labels = currentSeries.map((p) => p.hh);
+        chart.data.labels = currentSeries.map(axisLabel);
         chart.data.datasets[0].data = currentSeries.map((p) => p.tank_kh);
         chart.data.datasets[0].pointBackgroundColor = currentSeries.map((p) => (p.is_flat ? "#12808f" : "#c0392b"));
         chart.data.datasets[0].pointBorderColor = chart.data.datasets[0].pointBackgroundColor;

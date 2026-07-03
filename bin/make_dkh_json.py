@@ -5,15 +5,23 @@ dkh.dat 형식(공백 구분, 한 줄에 하나): HH ref_pH tank_pH ref_kh tank_
   - 5개 값 전부 0.000  → 에러 표식(측정 실패/타임아웃/KCl 소크 실패), 스킵
   - tank_kh 가 음수    → 평탄(평형) 미도달 표식. 크기는 유지되므로 abs() 로 값만 취하고 따로 표시
   - 파일에 날짜가 없다(시각 HH만 기록) → --recent 는 "최근 N건"(회수) 근사다.
+  - --dates-from-git: 각 행이 append 된 커밋 시각(git blame)으로 날짜를 복원해
+    "date"(YYYY-MM-DD) 필드를 붙인다. git 이력이 없으면 조용히 날짜 없이 동작.
 """
 import argparse
+import datetime
 import json
+import os
+import subprocess
+import sys
+
+KST = datetime.timezone(datetime.timedelta(hours=9))
 
 
 def load(path):
-    rows = []  # (hh, ref_kh, tank_kh, temp, is_flat)
+    rows = []
     with open(path) as f:
-        for line in f:
+        for lineno, line in enumerate(f, 1):
             parts = line.split()
             if len(parts) < 5:
                 continue
@@ -24,28 +32,79 @@ def load(path):
             if ref_kh_v == 0.0 and tank_kh_v == 0.0:
                 continue  # 에러 표식(전부 0) — 스킵
             is_flat = tank_kh_v >= 0
-            rows.append((int(hh), ref_kh_v, abs(tank_kh_v), temp, is_flat))
+            rows.append({
+                "line": lineno, "hh": int(hh), "ref_kh": ref_kh_v,
+                "tank_kh": abs(tank_kh_v), "temp": temp, "is_flat": is_flat,
+            })
     return rows
 
 
+def git_line_dates(dat_path):
+    """파일 각 줄의 날짜(YYYY-MM-DD 리스트, 1-base 줄번호 순)를 git 커밋 시각으로 복원.
+
+    행은 측정 시작(HH시) 약 1.5시간 뒤 크론 커밋으로 append 되므로 커밋 날짜≈측정 날짜.
+    - 커밋 시각의 시(hour)가 행의 HH보다 이르면 자정을 넘긴 지연 커밋 → 하루 빼기.
+    - 여러 행이 한 커밋에 들어온 구간(최초 시드 등)은 blame 날짜가 전부 같아지므로,
+      뒤에서부터 "HH가 다음 행보다 작지 않으면 날짜 경계"라는 하루 내 단조증가
+      성질로 상한을 걸어 보정한다(과거로 갈수록 근사).
+    실패(git 없음/이력 없음) 시 None — 호출부는 날짜 없이 동작한다.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "blame", "--line-porcelain", "--", os.path.basename(dat_path)],
+            cwd=os.path.dirname(os.path.abspath(dat_path)) or ".",
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except Exception as e:
+        print(f"경고: git blame 실패 — 날짜 없이 진행 ({e})", file=sys.stderr)
+        return None
+
+    entries = []  # 줄 순서대로 (커밋 epoch, 행의 HH 또는 None)
+    epoch = None
+    for ln in out.splitlines():
+        if ln.startswith("author-time "):
+            epoch = int(ln.split()[1])
+        elif ln.startswith("\t"):
+            first = ln[1:].split()[:1]
+            hh = int(first[0]) if first and first[0].isdigit() else None
+            entries.append((epoch, hh))
+    if not entries:
+        return None
+
+    dates = []
+    for ep, hh in entries:
+        dt = datetime.datetime.fromtimestamp(ep, KST)
+        d = dt.date()
+        if hh is not None and dt.hour < hh:
+            d -= datetime.timedelta(days=1)
+        dates.append(d)
+    for i in range(len(entries) - 2, -1, -1):
+        hh_i, hh_next = entries[i][1], entries[i + 1][1]
+        if hh_i is not None and hh_next is not None and hh_i >= hh_next:
+            max_d = dates[i + 1] - datetime.timedelta(days=1)
+        else:
+            max_d = dates[i + 1]
+        if dates[i] > max_d:
+            dates[i] = max_d
+    return [d.isoformat() for d in dates]
+
+
+def row_json(r):
+    out = {k: v for k, v in r.items() if k != "line"}
+    return out
+
+
 def write_latest_json(rows, path):
-    hh, ref_kh, tank_kh, temp, is_flat = rows[-1]
+    latest = dict(row_json(rows[-1]), count=len(rows))
     with open(path, "w") as f:
-        json.dump({
-            "hh": hh, "ref_kh": ref_kh, "tank_kh": tank_kh,
-            "temp": temp, "is_flat": is_flat, "count": len(rows),
-        }, f, ensure_ascii=False)
+        json.dump(latest, f, ensure_ascii=False)
     print(f"저장: {path}")
 
 
 def write_series_json(rows, path):
     """대시보드 인터랙티브 차트용 — 최근 구간을 배열로 내보낸다."""
-    series = [
-        {"hh": hh, "ref_kh": ref_kh, "tank_kh": tank_kh, "temp": temp, "is_flat": is_flat}
-        for hh, ref_kh, tank_kh, temp, is_flat in rows
-    ]
     with open(path, "w") as f:
-        json.dump(series, f, ensure_ascii=False)
+        json.dump([row_json(r) for r in rows], f, ensure_ascii=False)
     print(f"저장: {path}")
 
 
@@ -57,11 +116,20 @@ if __name__ == "__main__":
     ap.add_argument("--series-json", default=None, help="최근 구간 배열 JSON 출력 경로(옵션)")
     ap.add_argument("--recent", type=int, default=None,
                      help="series-json에 담을 최근 N건(옵션) — json(최신값)은 항상 전체 마지막 행 기준")
+    ap.add_argument("--dates-from-git", action="store_true",
+                     help="git blame 커밋 시각으로 각 행의 날짜를 복원해 date 필드 추가")
     args = ap.parse_args()
 
     rows = load(args.dat_file)
     if not rows:
         raise SystemExit("표시할 데이터가 없습니다(전부 에러 표식이거나 파일이 비어있음).")
+
+    if args.dates_from_git:
+        dates = git_line_dates(args.dat_file)
+        if dates:
+            for r in rows:
+                if r["line"] <= len(dates):
+                    r["date"] = dates[r["line"] - 1]
 
     if args.json:
         write_latest_json(rows, args.json)

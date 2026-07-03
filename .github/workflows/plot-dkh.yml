@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 날짜 복원(--dates-from-git)이 blame으로 전체 이력을 본다
 
       - uses: actions/setup-python@v5
         with:
@@ -26,8 +28,8 @@ jobs:
 
       - name: 최신값·시리즈 JSON 생성
         run: |
-          # 최근 2주(하루 3회 기준 42건) — dkh.dat에 날짜가 없어 "회수"로 근사
-          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent 42
+          # 최근 2주(하루 3회 기준 42건) — 날짜는 각 행의 동기화 커밋 시각으로 복원
+          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent 42 --dates-from-git
 
       - name: 변경분 커밋
         run: |
