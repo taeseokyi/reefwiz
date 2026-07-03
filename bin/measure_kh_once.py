@@ -24,6 +24,8 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
     AND 최근 FLAT_NET_N개 양끝차 ≤ FLAT_NET_MPH(드리프트)** 면 평형 도달로 보고 종료. ★B1: net 룩백을
     span보다 길게(8 vs 4) 둬 느린 단조 꼬리 조기 latch 차단(정수 비교라 float 지터 없음).
     → 격차(시작 CO₂)에 자동 적응(평탄할 때까지 측정).
+    ★MIN_N(2026-07-03): tank 는 유효샘플 FLAT_MIN_N_TANK(20)회 전 잠금 금지 — 저진폭(무딘 S커브)
+    날은 초기 lag/측정계 과도가 net8 창 감지한계 밑이라 false lock(7/3 05:00 7.509). ref 미적용.
     차동에서 ref·tank 가 같은 평형(실내공기 pCO₂)에 도달 → 방 CO₂ 상쇄.
   - ★tank 먼저 + 5L 위즈수조 동시 폭기(2026-06-20): m1=본수조↔홀딩, m2=홀딩↔측정챔버,
     m4=참조수(5L)↔측정챔버, m3=KCl↔측정챔버.
@@ -82,6 +84,12 @@ FLAT_SPAN_N    = 4       # 흔들림(span) 판정 윈도우 — 최근 N개
 FLAT_SPAN_MPH  = 2       # 최근 FLAT_SPAN_N개 max−min ≤ 2 mpH (흔들림 폭). 정수 비교라 float 지터 없음
 FLAT_NET_N     = 8       # ★B1(2026-06-20): 드리프트(net) 판정 룩백 — span보다 긴 창(≈5분)
 FLAT_NET_MPH   = 1       # 최근 FLAT_NET_N개 양끝 |win[-1]-win[0]| ≤ 1 mpH. 짧은 4점은 느린 단조 꼬리서 net=1 위장(20:29 tank 10회 조기 latch) → 8점으로 차단
+FLAT_MIN_N_TANK = 20     # ★MIN_N(2026-07-03): tank 는 유효샘플 20회(≈13분) 전 평탄 잠금 금지.
+                         #   평형 접근은 지수라 기울기∝진폭 — 진폭 작은 날(새벽, 수조수 pCO₂≈헤드스페이스)은
+                         #   S커브가 무뎌져 초기 lag(측정계 과도 포함)가 net8 창 감지한계 밑 → false lock
+                         #   (7/3 05:00 7.509, 참값 ~7.24). 관측 lag ~4-6샘플의 3배 여유.
+                         #   ref 는 능동폭기 앵커(진폭 원래 0, 8~15회 잠금이 정상)라 미적용 — 여기에
+                         #   '하강 관찰 필수' 류 조건을 걸면 ref 가 PHASE_MAX 까지 교착하므로 금지.
 MEAS_INTERVAL  = 30      # 측정 간 간격(초) — 폭기 지속
 # ── ★무한 대기 방지 상한 ──
 PHASE_MAX_SECS = 7200    # phase(tank/ref)별 최대 측정 시간(초)=2h. 2-phase라 총 4h(측정 갭 8h의 절반). 초과 시 마지막값+경고
@@ -456,17 +464,20 @@ def measure_until_flat(ser, what):
     평형 판정 = 최근 FLAT_SPAN_N개 (max−min) ≤ FLAT_SPAN_MPH (흔들림) AND
                 최근 FLAT_NET_N개 양끝차 ≤ FLAT_NET_MPH (드리프트).
     ★B1: net 룩백(FLAT_NET_N)을 span(FLAT_SPAN_N)보다 길게 둬 느린 단조 꼬리 조기 latch 차단.
+    ★MIN_N: tank 는 유효샘플 FLAT_MIN_N_TANK회 전 잠금 금지(무딘 S커브 초기 lag false lock 차단).
     펌웨어가 마지막 측정값을 refPH/tankPH 에 보관하므로 최종(평탄) 값이 calkh 에 쓰인다.
 
     ★무한 대기 방지: 경과 PHASE_MAX_SECS 또는 측정 MEAS_MAX 회 초과 시 마지막값+경고로 종료.
       연속 파싱 실패 FAIL_MAX 회 초과 시 실패(ph=None) 반환.
     반환: (ph, n_reads, flat_ok). ph=None 이면 측정 실패(응답 없음/계속 실패)."""
     label = '수조수' if what == 'tank' else '참조수'
+    min_n = FLAT_MIN_N_TANK if what == 'tank' else 0
     win = []          # 최근 FLAT_NET_N개 정수 milli-pH (span은 뒤 FLAT_SPAN_N개로 판정)
     last_ph = None
     fails = 0
     t0 = time.time()
     n = 0
+    n_ok = 0          # 유효샘플 수(파싱 실패 제외) — MIN_N 판정용
     while True:
         n += 1
         try:
@@ -493,6 +504,7 @@ def measure_until_flat(ser, what):
         else:
             fails = 0
             last_ph = ph
+            n_ok += 1
             elapsed = int(time.time() - t0)
             win.append(round(ph * 1000))         # 정수 milli-pH (float 비교 지터 회피)
             if len(win) > FLAT_NET_N:
@@ -503,8 +515,11 @@ def measure_until_flat(ser, what):
                 netstr = f"{net}" if net is not None else f"-({len(win)}/{FLAT_NET_N})"
                 print(f"    [{what}] {n}회 pH:{ph:.3f} span{FLAT_SPAN_N}:{span}mpH net{FLAT_NET_N}:{netstr}mpH ({elapsed}s)")
                 if span <= FLAT_SPAN_MPH and (net is not None) and net <= FLAT_NET_MPH:
-                    print(f"    [평탄] {what} {n}회 — span{FLAT_SPAN_N}={span}≤{FLAT_SPAN_MPH} AND net{FLAT_NET_N}={net}≤{FLAT_NET_MPH} → 평형 (pH {ph:.3f})")
-                    return ph, n, True
+                    if n_ok < min_n:
+                        print(f"    [평탄보류] {what} {n}회 — 판정조건 충족이나 MIN_N({min_n}) 미달({n_ok}회) — 초기 lag/과도 구간, 계속 관찰")
+                    else:
+                        print(f"    [평탄] {what} {n}회 — span{FLAT_SPAN_N}={span}≤{FLAT_SPAN_MPH} AND net{FLAT_NET_N}={net}≤{FLAT_NET_MPH} → 평형 (pH {ph:.3f})")
+                        return ph, n, True
             else:
                 print(f"    [{what}] {n}회 pH:{ph:.3f} (윈도우 {len(win)}/{FLAT_SPAN_N}, {elapsed}s)")
 

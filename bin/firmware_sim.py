@@ -50,6 +50,10 @@ class FirmwareSim:
         # 드롭(소켓 강제 닫기): {'pat':str,'nth':int,'when':'before'|'after'[, 'kill':True]}
         #   kill=True 면 드롭과 함께 서버 자체를 내려 이후 재연결을 거부(완전 통신 두절 모사).
         self.drops = []
+        # tank pH 프로파일(무딘 S커브 등 시계열 모사): None=상수 TANK_PH(기존 동작).
+        #   리스트면 tank 명령마다 순서대로 반환, 소진 후엔 마지막 값 유지(=평형).
+        self.tank_profile = None
+        self._tank_idx = 0
         # 예외 모드(지속): 특정 명령 패턴을
         self.garble = set()         #   측정 응답에서 pH 라인 누락 → 호스트 parse 실패(FAIL_MAX 경로)
         self.no_done = set()        #   모터 응답에서 '[모터n] 완료' 누락 → 미완료(튜브 막힘 모사)
@@ -166,11 +170,16 @@ class FirmwareSim:
         if cmd == 'ton':    return ['[SOL] 수조ON']
         if cmd == 'toff':   return ['[SOL] 수조OFF']
         if cmd == 'stop':   return ['[STOP] 전체 정지(모터+핀)']
-        # 측정: 상수 pH(8회째 평탄)
+        # 측정: 상수 pH(8회째 평탄) 또는 tank_profile 시계열(무딘 S커브 모사)
         if cmd == 'tank':
-            self.tank_ph = TANK_PH; self.tank_meas_done = True
+            if self.tank_profile:
+                ph = self.tank_profile[min(self._tank_idx, len(self.tank_profile) - 1)]
+                self._tank_idx += 1
+            else:
+                ph = TANK_PH
+            self.tank_ph = ph; self.tank_meas_done = True
             val = (f'[수조수] V:1234.567 T:{TEMP:.1f}C (pH 누락)' if 'tank' in self.garble
-                   else f'[수조수] V:1234.567 pH:{TANK_PH:.3f} T:{TEMP:.1f}C')
+                   else f'[수조수] V:1234.567 pH:{ph:.3f} T:{TEMP:.1f}C')
             return ['', '[START] 수조수 측정(8초)...',
                     '  샘플링: 16/64', '  샘플링: 32/64', '  샘플링: 48/64', '  샘플링: 64/64',
                     val, '[OK]']
