@@ -208,6 +208,7 @@
         <button type="button" class="range-btn" id="plateauNext" aria-label="다음(최신) 측정">▶</button>
       </div>
       <p class="chart-caption" id="plateauMeta">불러오는 중…</p>
+      <p class="chart-caption" id="plateauCoverage" hidden></p>
       <div class="range-toggle" id="plateauZoomToggle" role="group" aria-label="확대 보기">
         <button type="button" class="range-btn active" data-zoom="0">전체 보기</button>
         <button type="button" class="range-btn" data-zoom="1">🔍 말미 확대(마지막 15회)</button>
@@ -382,6 +383,27 @@
         zoomToggle.style.display = "none";
         runPicker.style.display = "none";
         return;
+      }
+
+      // 이력이 14일 미만이면 안내 — "최근 14일"은 보관 상한(42런)이고, 이력 누적은
+      // 2026-07-01부터 시작이라 그때까지는 있는 만큼만 보인다(원본 로그가 1MB 넘으면
+      // 비워지는 설계라 그 이전 곡선은 어디에도 없음 → 백필 불가).
+      const dated = runs.filter((d) => d.run_started);
+      if (dated.length) {
+        const toDate = (s) => new Date(s.replace(" ", "T"));
+        const oldest = toDate(dated[0].run_started);
+        const newest = toDate(dated[dated.length - 1].run_started);
+        const covered = Math.floor((newest - oldest) / 86400000) + 1;
+        if (covered < 14) {
+          const mmdd = (t) =>
+            String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+          const fullBy = new Date(oldest.getTime() + 13 * 86400000);
+          const coverEl = document.getElementById("plateauCoverage");
+          coverEl.textContent =
+            "ⓘ 이력 누적 중 — 지금은 " + mmdd(oldest) + "부터 " + covered + "일치(" +
+            runs.length + "회)만 있습니다. 14일치는 " + mmdd(fullBy) + "쯤 채워집니다.";
+          coverEl.hidden = false;
+        }
       }
 
       // 셀렉트 옵션은 최신이 맨 위(값 = runs 인덱스)
