@@ -26,3 +26,6 @@ reefcore.conf
 
 # 커뮤니티 펌웨어 바이너리(재배포 회피)
 firmware/*.bin
+
+# Arduino 빌드 산출물
+firmware/**/build/
