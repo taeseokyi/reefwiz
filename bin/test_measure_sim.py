@@ -36,6 +36,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 import io
 import sys
 import time
+import threading
 import contextlib
 
 import serial
@@ -52,6 +53,7 @@ mk.PHASE_MAX_SECS  = 60
 mk.MEAS_READ_TIMEOUT = 0.5     # 정상 응답은 즉시라 무관; 예외(무응답) 시 빨리 타임아웃
 mk.LINK_PING_TIMEOUT = 0.3     # ensure_link/reconnect 핑 대기 단축
 mk.FAIL_MAX        = 2          # 예외 시나리오에서 빨리 phase 실패(백스톱 경로 검증)
+mk.LINK_RETRY_INTERVAL = 0.5    # 링크 사망 끈질긴 대기(2026-07-03) 재접속 간격 단축
 
 EXPECT_TANK_DKH = DEFAULT_REF_DKH * (10 ** (-(REF_PH - TANK_PH)))   # ≈ 8.142
 MOTORS = ['m3b:68', 'm1f:70', 'm2f:60', 'm2b:68', 'm4f:60', 'm4b:70', 'm1b:82', 'm3f:60']
@@ -375,8 +377,9 @@ def _drive_main(setref=None, meas_max=None, drops=None, dat_error=False):
                            ref_kh=ref_kh, tank_kh=tank_kh, temp=temp))
     def fake_pub(tank_kh, temp):
         published.update(dict(tank_kh=tank_kh, temp=temp))
-    def fake_serial(p, b, timeout=1):
-        return serial.serial_for_url(p, baudrate=b, timeout=timeout)
+    def fake_serial(p, b, timeout=1, **kw):
+        # write_timeout 등 추가 kwargs 는 socket 가상포트에 그대로 전달(2026-07-03 write_timeout=5 대응)
+        return serial.serial_for_url(p, baudrate=b, timeout=timeout, **kw)
     argv = ['measure_kh_once.py', f'socket://127.0.0.1:{port}']
     if setref is not None:
         argv += ['--setref', str(setref)]
@@ -421,6 +424,55 @@ def scenario_calref_unflat():
     check("ref_kh 는 양수(부호는 tank_kh 만)", (logged.get('ref_kh') or 0) > 0, f"got {logged.get('ref_kh')}")
     check("reefCore 도 음수 -8.448 발행(미평탄 약속 전달)", published.get('tank_kh') == -8.448,
           f"published={published}")
+
+
+def scenario_host_salvage():
+    print("\n[18] calkh 직전 완전 두절 → 호스트 구제: 음수 dKH 기록·발행(0.0 래치 방지) (2026-07-03)")
+    # 양 phase 평탄 후 calkh 만 못 돌린 상황 — 호스트가 시작 시 캐시한 refKH 로 동일 차동식 계산,
+    # 음수(미평탄) 표식으로 기록해 0.0 래치(다음 측정 생략)를 피해야 한다.
+    logged, published, out = _drive_main(
+        drops=[{'pat': 'calkh', 'nth': 1, 'when': 'before', 'kill': True}])
+    check("호스트 구제 로그", '호스트 구제' in out)
+    check("dkh.dat 음수 구제값(≈-기대 dKH)",
+          logged.get('tank_kh') is not None and abs(logged['tank_kh'] + EXPECT_TANK_DKH) < 0.01,
+          f"got {logged.get('tank_kh')} (기대 {-EXPECT_TANK_DKH:.3f})")
+    check("ref_kh = 시작 시 status 캐시(양수)",
+          logged.get('ref_kh') is not None and abs(logged['ref_kh'] - DEFAULT_REF_DKH) < 0.001,
+          f"got {logged.get('ref_kh')}")
+    check("reefCore 도 음수 발행(0.0 래치 아님)",
+          published.get('tank_kh') is not None and published['tank_kh'] < 0,
+          f"published={published}")
+
+
+def scenario_link_recovery():
+    print("\n[19] 평탄 phase 중 링크 사망 → 복귀 → 측정 재개·완주(끈질긴 대기) (2026-07-03)")
+    # tank 2회차 직전 서버 kill(완전 두절) → 3초 뒤 같은 포트에 sim 재기동('노트북 복귀' 모사)
+    # → _wait_link_recovery 가 재접속해 측정 재개, 끝까지 정상(양수) 완주해야 한다.
+    sim = FirmwareSim()
+    sim.drops = [{'pat': 'tank', 'nth': 2, 'when': 'before', 'kill': True}]
+    port = sim.start(); time.sleep(0.1)
+    ser = open_ser(port); time.sleep(0.1); ser.reset_input_buffer()
+    sim2 = FirmwareSim(port=port)
+    timer = threading.Timer(3.0, sim2.start)
+    timer.start()
+    buf = io.StringIO(); result = None
+    try:
+        with contextlib.redirect_stdout(buf):
+            result = mk.run_measurement(ser)
+    finally:
+        timer.cancel()
+        try: ser.close()
+        except Exception: pass
+        sim.stop(); sim2.stop()
+    out = buf.getvalue()
+    check("링크 사망 끈질긴 대기 로그", '재접속 대기' in out)
+    check("링크 복구 후 측정 재개 로그", '측정 재개' in out)
+    check("결과 튜플 완성(완주)", result is not None and all(v is not None for v in result),
+          f"result={result}")
+    check("dKH 양수(정상 완주, 구제 아님)",
+          result is not None and result[3] is not None and abs(result[3] - EXPECT_TANK_DKH) < 0.01,
+          f"got {result and result[3]} (기대 {EXPECT_TANK_DKH:.3f})")
+    check("호스트 구제 미발동", '호스트 구제' not in out)
 
 
 def scenario_calkh_error_publish():
@@ -474,6 +526,8 @@ def main():
     scenario_motor_stop_drop()
     scenario_calref_records()
     scenario_calref_unflat()
+    scenario_host_salvage()
+    scenario_link_recovery()
     scenario_calkh_error_publish()
     scenario_calref_error_publish()
     scenario_latch_consistency()
