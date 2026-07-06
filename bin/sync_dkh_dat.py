@@ -28,6 +28,8 @@ DAT_SRC = "/mnt/c/dkh/work/dkh.dat"
 DAT_DST = os.path.join(REPO_DIR, "data", "dkh.dat")
 PLATEAU_SRC = "/mnt/c/dkh/measure_kh.log"
 PLATEAU_DST = os.path.join(REPO_DIR, "docs", "dkh_plateau_history.json")
+DOSER_SRC = "/mnt/c/dkh/work/doser_history.json"   # doser_adjust.py 가 남기는 조정 이력
+DOSER_DST = os.path.join(REPO_DIR, "docs", "doser_history.json")
 MAX_RUNS = 42  # 14일 × 하루 3회 — 대시보드 조회 범위
 LOCK_FILE = "/tmp/dkh_sync.lock"
 LOG_FILE = os.path.expanduser("~/dkh_sync.log")
@@ -47,18 +49,31 @@ def run_git(*args):
     )
 
 
+def copy_if_changed(src, dst):
+    """src(읽기 전용)를 dst 로 복사. 내용이 같으면 False."""
+    with open(src, "rb") as f:
+        src_bytes = f.read()
+    if os.path.exists(dst) and open(dst, "rb").read() == src_bytes:
+        return False
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(dst, "wb") as f:
+        f.write(src_bytes)
+    return True
+
+
 def sync_dat():
     if not os.path.exists(DAT_SRC):
         log.warning("원본 없음: %s (Windows 드라이브 마운트 확인 필요)", DAT_SRC)
         return False
-    with open(DAT_SRC, "rb") as f:
-        src_bytes = f.read()
-    if os.path.exists(DAT_DST) and open(DAT_DST, "rb").read() == src_bytes:
+    return copy_if_changed(DAT_SRC, DAT_DST)
+
+
+def sync_doser():
+    # 도저 조정 이력 — 도입(2026-07-06) 전이나 아직 조정이 한 번도 안 돌았으면 원본이
+    # 없는 게 정상이라 경고 없이 무동작.
+    if not os.path.exists(DOSER_SRC):
         return False
-    os.makedirs(os.path.dirname(DAT_DST), exist_ok=True)
-    with open(DAT_DST, "wb") as f:
-        f.write(src_bytes)
-    return True
+    return copy_if_changed(DOSER_SRC, DOSER_DST)
 
 
 def sync_plateau():
@@ -104,8 +119,9 @@ def sync_with_remote():
     """GitHub Actions(plot-dkh.yml)가 렌더링 결과를 origin에 직접 push하므로,
     이 로컬 저장소를 먼저 최신으로 맞추지 않으면 다음 로컬 커밋이 origin과
     갈라져 이후 push가 전부 실패한다(2026-07-01 밤 실제 발생, 약 7시간 방치).
-    건드리는 파일이 서로 겹치지 않아(로컬=data/dkh.dat·dkh_plateau_history.json,
-    Actions=images/*·dkh_latest.json·dkh_series.json) rebase 충돌은 나지 않는 게 정상."""
+    건드리는 파일이 서로 겹치지 않아(로컬=data/dkh.dat·dkh_plateau_history.json·
+    doser_history.json, Actions=images/*·dkh_latest.json·dkh_series.json) rebase
+    충돌은 나지 않는 게 정상."""
     fetch = run_git("fetch", "origin", "master")
     if fetch.returncode != 0:
         log.warning("fetch 실패(네트워크?): %s", fetch.stderr.strip())
@@ -124,12 +140,15 @@ def main():
 
     changed_dat = sync_dat()
     changed_plateau = sync_plateau()
+    changed_doser = sync_doser()
 
     paths = []
     if changed_dat:
         paths.append("data/dkh.dat")
     if changed_plateau:
         paths.append("docs/dkh_plateau_history.json")
+    if changed_doser:
+        paths.append("docs/doser_history.json")
 
     if paths:
         run_git("add", *paths)
