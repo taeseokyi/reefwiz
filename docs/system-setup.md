@@ -192,10 +192,14 @@ tank 측정 내내 5L 위즈수조를 *동시 폭기*해 ref 가 5L서 co-aerati
 
 | 스크립트 | 동작 |
 |----------|------|
-| `bin/measure_kh_once.py` | **V4** — 1회 측정 후 종료 (Windows 작업 스케줄러 정시 실행용) |
+| `bin/run_measure_and_sync.py` | **스케줄러 진입점(2026-07-05~)** — 측정 → 도저 조정(매회 오버라이드 확인, 월~금 13시만 자동 권고) → 대시보드 동기화를 연쇄 실행 ([파이프라인](#측정-직후-대시보드-동기화-파이프라인)) |
+| `bin/measure_kh_once.py` | **V4** — 1회 측정 후 종료 (래퍼가 호출, 수동 단독 실행도 가능) |
+| `bin/doser_adjust.py` | 올포리프 도저 조정 — 권고 계산(자동 적용 꺼짐)·대시보드 수동/목표 설정 적용 ([사용설명서 §10](user-manual.md#10-도저-자동-조정-올포리프)) |
+| `bin/sync_dkh_dat.py` | dkh.dat·평탄 이력·도저 이력을 저장소에 커밋/push (WSL, 래퍼가 호출) |
+| `bin/dkh_server.py` | `GET /api/dkh`(포트 9999) 최신 측정값 JSON 서버 + 도저 수동 설정 5분 폴러 |
 | `bin/test_aeration_plateau.py` | tank 단일 평형곡선 진단 (V4와 동일 평탄 기준, 종료 시 KCl 소크) |
 | `bin/firmware_sim.py` | 소켓 가상 포트 펌웨어 시뮬레이터 (회귀 테스트용, WSL 전용) |
-| `bin/test_measure_sim.py` | 통합 회귀 테스트 (12 시나리오/58 검증) — [상세](bt-reconnect-and-testing.md#3-시뮬레이터-회귀-검증-배포-전-필수) |
+| `bin/test_measure_sim.py` | 통합 회귀 테스트 (20 시나리오/97 검증) — [상세](bt-reconnect-and-testing.md#3-시뮬레이터-회귀-검증-배포-전-필수) |
 | `bin/bt_health.py` | (보조) HC-06 BT 링크 드롭률·RTT 모니터 |
 
 **V4 (`measure_kh_once.py`) 주요 상수:**
@@ -206,6 +210,7 @@ tank 측정 내내 5L 위즈수조를 *동시 폭기*해 ref 가 5L서 co-aerati
 | `FLAT_SPAN_MPH` | 2 | 최근 `FLAT_SPAN_N`개 정수 milli-pH의 (max−min) ≤ 2면 흔들림 통과 |
 | `FLAT_NET_N` | 8 | 드리프트(net) 판정 룩백 — span보다 긴 창(★B1, 느린 단조 꼬리 조기 latch 차단) |
 | `FLAT_NET_MPH` | 1 | 최근 `FLAT_NET_N`개 양끝차 ≤ 1이면 드리프트 통과(span·net 둘 다 통과해야 평형) |
+| `FLAT_MIN_N_TANK` | 20 | **tank 전용** 최소 측정 횟수(=10분) — 저진폭 날 초기 lag 구간(무딘 S커브)의 조기 잠금(false lock) 차단(2026-07-03, 7/4 실전 검증). ref는 co-aeration으로 평형 근처서 시작하므로 미적용(0) |
 | `MEAS_INTERVAL` | 30 | 측정 간 간격(초) — 폭기 지속 |
 | `PHASE_MAX_SECS` | 7200 | phase(tank/ref)별 최대 측정시간(초)=2h, 초과 시 마지막값+경고 |
 | `MEAS_MAX` | 240 | phase별 최대 측정 횟수(백스톱)=7200/30 |
@@ -274,7 +279,7 @@ pythonw measure_kh_once.py
 
 ### Windows 작업 스케줄러 등록 (정시 자동 측정)
 
-`measure_kh_once.py`를 **매일 05:00 / 13:00 / 21:00**(05시부터 8시간 간격, 하루 3회) 자동 실행하는 예입니다. 한 개의 반복 패턴(Repetition) 대신 **고정 시각 Daily 트리거 3개**를 씁니다 — 매일 재무장되어 재부팅 후에도 스케줄이 깨지지 않고, 꺼져 있던 시간대의 측정은 보충하지 않습니다(의도된 동작).
+래퍼 `run_measure_and_sync.py`(측정→도저 조정→동기화 연쇄)를 **매일 05:00 / 13:00 / 21:00**(05시부터 8시간 간격, 하루 3회) 자동 실행하는 예입니다. 한 개의 반복 패턴(Repetition) 대신 **고정 시각 Daily 트리거 3개**를 씁니다 — 매일 재무장되어 재부팅 후에도 스케줄이 깨지지 않고, 꺼져 있던 시간대의 측정은 보충하지 않습니다(의도된 동작). (2026-07-05까지는 `measure_kh_once.py`를 직접 실행하고 WSL cron이 별도로 동기화했으나, 측정이 길어지면 부분 데이터가 올라가는 문제로 **측정 완료 직후 동기화** 방식으로 전환했습니다.)
 
 **관리자 PowerShell**에서 실행합니다(한글 경로 문제를 피하기 위해 ASCII 정션 `C:\dkh` 경로 사용):
 
@@ -286,15 +291,15 @@ $triggers = @(
     New-ScheduledTaskTrigger -Daily -At 21:00
 )
 
-# 2) 콘솔 없는 pythonw 로 1회 측정 스크립트 실행
+# 2) 콘솔 없는 pythonw 로 래퍼(측정→도저 조정→동기화) 실행
 $action = New-ScheduledTaskAction `
     -Execute 'C:\dkh\python313\pythonw.exe' `
-    -Argument 'C:\dkh\work\measure_kh_once.py'
+    -Argument 'C:\dkh\work\run_measure_and_sync.py'
 
-# 3) 설정: 배터리·유휴로 중지 금지, 1회 측정 상한 270분(스크립트 자체 최대 ~4h + 여유), 중복 실행 시 새 인스턴스 무시
+# 3) 설정: 배터리·유휴로 중지 금지, 1회 상한 5h(측정 자체 최대 ~4h + 조정·동기화 여유), 중복 실행 시 새 인스턴스 무시
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 270) `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 5) `
     -MultipleInstances IgnoreNew
 $settings.IdleSettings.StopOnIdleEnd = $false
 
@@ -311,7 +316,7 @@ Register-ScheduledTask -TaskName 'Measure KH' -TaskPath '\tsyi\' `
 |------|----|------|
 | `AllowStartIfOnBatteries` / `DontStopIfGoingOnBatteries` | 켬 | 노트북에서 기본값(배터리 시 중지)이 데몬·측정을 로그 없이 강제 종료하는 문제 회피 |
 | `IdleSettings.StopOnIdleEnd` | `$false` | 유휴 종료 시 작업이 중단되지 않도록 |
-| `ExecutionTimeLimit` | 270분 | V4 1회 측정은 평형까지 적응하므로 대개 **35~50분**이지만, tank·ref 두 phase가 모두 상한(각 `PHASE_MAX_SECS`=2h)에 걸리면 측정만 최대 4h + 이송·정리 여유가 필요. 스크립트 자체 phase 상한이 런타임을 4h로 묶으므로, 정당한 장시간 측정을 죽이지 않도록 그보다 넉넉한 270분으로 둠(멈춘 프로세스는 시리얼 타임아웃·`FAIL_MAX`로 스크립트가 자체 종료) |
+| `ExecutionTimeLimit` | 5h | V4 1회 측정은 평형까지 적응하므로 대개 **35~50분**이지만, tank·ref 두 phase가 모두 상한(각 `PHASE_MAX_SECS`=2h)에 걸리면 측정만 최대 4h + 도저 조정·동기화·이송·정리 여유가 필요. 정당한 장시간 측정을 죽이지 않도록 5h(멈춘 프로세스는 시리얼 타임아웃·`write_timeout`·`FAIL_MAX`로 스크립트가 자체 종료) |
 | `MultipleInstances` | `IgnoreNew` | 직전 측정이 진행 중이면 다음 정시 트리거는 스킵 |
 | `LogonType` | `Interactive` | COM(블루투스) 포트가 사용자 세션에 바인딩되어, 로그인된 대화형 세션에서만 접근 가능 |
 
@@ -330,6 +335,25 @@ Register-ScheduledTask -TaskName 'Measure KH' -TaskPath '\tsyi\' `
   latch시켜 오차를 만들 수 있었으나, **밀폐 공통 헤드스페이스가 이 원인을 구조적으로 제거**합니다
   (외부 공기 차단 → 헤드스페이스 pCO₂ 고정 + 평형 즉시 도달로 측정 시간차 붕괴). 상세 검증은 [측정 대장](measurement-ledger.md) 참조
 
+### 측정 직후 대시보드 동기화 파이프라인
+
+측정 결과는 사람 개입 없이 [GitHub Pages 대시보드](https://taeseokyi.github.io/reefwiz/)까지 자동으로 흐릅니다 (2026-07-05 전환 — 이전의 WSL cron 방식은 측정이 길어지면 부분 데이터가 올라가는 문제가 있어 폐지):
+
+```
+Windows 스케줄러 (05/13/21시)
+  └ run_measure_and_sync.py (래퍼, C:\dkh\work)
+      ① measure_kh_once.py  — V4 측정 → dkh.dat 기록·reefCore 발행
+      ② doser_adjust.py     — 대시보드 수동 도징 설정 확인·적용(매회)
+      │                       + 자동 조정 권고 계산(월~금 13시 회차만)
+      ③ wsl.exe → sync_dkh_dat.py — dkh.dat·평탄 이력·도저 이력 커밋/push
+          └ GitHub Actions (make_dkh_json.py) → Pages 갱신 (수 분 내)
+```
+
+- 동기화는 측정이 완전히 끝난 뒤에만 시작되고, 실패해도 측정 결과(dkh.dat·로그)에는 영향이 없습니다 — push 실패분은 다음 회차의 push가 복구합니다. rebase는 `--autostash`라 작업 중 미커밋 변경이 있어도 동기화가 진행됩니다.
+- 도저 조정 실패·타임아웃도 동기화를 막지 않습니다. 조정 개념·안전 한계는 [사용설명서 §10](user-manual.md#10-도저-자동-조정-올포리프) 참조.
+- 별도로 `dkh_server.py`(작업 "DKH Server")가 `GET /api/dkh`(포트 9999)로 최신 측정값 JSON을 제공하고, 5분 간격 폴러로 대시보드의 도저 수동 설정을 측정 대기 없이 적용합니다.
+- 래퍼·조정 스크립트 원본은 저장소 `bin/`, 배포본은 `C:\dkh\work\` — **수정 시 재복사 필수**.
+
 ### 블루투스 통신 안정화 & 시뮬레이터 검증
 
 측정은 HC-06 블루투스 SPP(COM9)로 통신하는데, 이 RF 링크가 간헐적으로 끊긴다(주로 **명령을 보내려는 순간 이미 끊겨 있음**). 이에 대응해 `measure_kh_once.py`의 `send()`는 다음을 보장한다.
@@ -339,13 +363,14 @@ Register-ScheduledTask -TaskName 'Measure KH' -TaskPath '\tsyi\' `
 3. 보낸 뒤 연결 문제(예외·응답 미수신)면 **재연결 후 재시도**(`SEND_RETRY_MAX`회)
 4. **모터는 재시도 시 먼저 정지(`mNs`) 후 재송신** — 펌프 중복 구동 방지
 5. (예방) 유휴 구간 **keepalive** — 12초마다 빈 줄로 ~20초 유휴 드롭 차단
+6. **장기 링크 사망 보강(2026-07-03)** — `write_timeout=5`(write 무한 블로킹 좀비 방지), 평탄 phase 중 링크 사망 시 phase 마감까지 60초 간격 끈질긴 재접속(폭기 유지=평형 보존), calkh 불능 시 시작 캐시 refKH로 호스트가 dKH 계산·음수 기록(호스트 구제)
 
 호스트측으로는 Wi-Fi/BT 네트워크 장치 비활성화·USB 선택적 절전 OFF로 2.4GHz 간섭·포트 절전을 줄인다.
 
 **회귀 검증(배포 전 필수):** 소켓 가상 펌웨어 시뮬레이터로 정상·예외 상황을 검증한다.
 
 ```bash
-cd bin && python3 test_measure_sim.py     # WSL, 12 시나리오/58 검증 — 전부 PASS여야 배포
+cd bin && python3 test_measure_sim.py     # WSL, 20 시나리오/97 검증 — 전부 PASS여야 배포
 ```
 
 > 증상·호스트 조치·4계층 동작·상수·시뮬레이터/테스트 구성(시나리오 표)·배포 안전성은

@@ -28,7 +28,10 @@
 - **[참조 dKH 역산](docs/user-manual.md#35-calref--참조-dkh-역산)** — 수조 dKH 실측값으로 참조수 dKH를 자동 계산, 참조수 별도 측정 불필요
 - **[밀폐 공통 헤드스페이스 (필수)](docs/system-setup.md#위즈-탱크)** — 참조수·측정수·펌프 흡입이 한 밀폐 공기를 공유 → 측정 순간 ref·tank pCO₂ 일치(방 CO₂ 공통모드 상쇄) + 증발/오염 차단. 새벽 고-CO₂에서도 ΔpH 안정(2026-06-19 검증)
 - **[3D 프린팅 하우징](docs/system-setup.md#하우징-3d-프린팅)** — OpenSCAD 파라메트릭 설계, 부품 실측 후 즉시 출력
-- **확장 가능** — ESP32 보드와 시리얼/블루투스 연결로 Wi-Fi, 웹 대시보드, 모바일 앱, 인터넷 접속으로 확장 가능
+- **[웹 대시보드 (PWA)](docs/user-manual.md#9-웹-대시보드)** — 측정 완료 직후 결과가 자동으로 GitHub Pages에 반영. dKH 그래프(3일/7일/전체), 평탄 수렴 곡선 조회(최근 14일), 최신값 JSON API
+- **[도저 자동 조정 (권고)](docs/user-manual.md#10-도저-자동-조정-올포리프)** — 측정된 dKH 수준(3회 중앙값)·추세(7일 기울기)로 올포리프 도징량 조정을 계산. 대시보드에서 수동 도징량·목표 dKH 설정 가능
+- **[reefCore 연동](docs/reefcore-integration.md)** — 측정값을 reefCore 생태계(reefChecker)에 측정 레코드로 자동 발행
+- **확장 가능** — ESP32 보드와 시리얼/블루투스 연결로 Wi-Fi, 모바일 앱, 인터넷 접속으로 확장 가능
 
 > 정밀한 pH 측정을 위해 Wi-Fi가 없는 Arduino Nano를 사용하여 전자기 간섭을 최소화하였습니다. Wi-Fi, 웹 대시보드, 데이터 로깅 등 부족한 기능은 ESP32를 시리얼/블루투스로 연결하면 해결 가능합니다.
 
@@ -144,7 +147,7 @@ A0  (D14) ← DS18B20 DQ      A4/A5     ↔ ADS1115 I2C
 
 ```bash
 # 1회 측정 후 종료 (Windows 작업 스케줄러 정시 호출용 / 수동 실행 가능)
-python bin/measure_kh_once.py        # 포트 = 스크립트 기본값 COM15
+python bin/measure_kh_once.py        # 포트 = 스크립트 기본값 COM9
 python bin/measure_kh_once.py COM7   # 포트 직접 지정
 ```
 
@@ -167,10 +170,12 @@ python bin/measure_kh_once.py COM7   # 포트 직접 지정
 
 | 문서 | 설명 |
 |------|------|
-| [자동화 환경 구성](docs/system-setup.md) | 구성 요소, 호스 연결, 측정 시퀀스, 하우징 |
-| [사용 설명서](docs/user-manual.md) | 전체 명령어, 보정, 오류 메시지, 팁 |
+| [자동화 환경 구성](docs/system-setup.md) | 구성 요소, 호스 연결, 측정 시퀀스, 동기화 파이프라인, 하우징 |
+| [사용 설명서](docs/user-manual.md) | 전체 명령어, 보정, 오류 메시지, 웹 대시보드, 도저 자동 조정 |
 | [준비물 목록](docs/parts-list.md) | 부품 사진, 구매 링크, 금액 |
 | [**측정 대장**](docs/measurement-ledger.md) | 코드 버전별 실측 기록·환경·ΔpH 검증·참조 문헌 — **결과 신뢰성의 근거** |
+| [reefCore 연동](docs/reefcore-integration.md) | 측정값을 reefCore 생태계에 발행하는 MQTT 연동 |
+| [블루투스 재연결](docs/bt-reconnect-and-testing.md) | HC-06 RF 순단 대응·장기 사망 보강·시뮬레이터 회귀 검증 |
 
 ## 산호 수조 권장 dKH 범위
 
