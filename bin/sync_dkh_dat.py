@@ -121,12 +121,17 @@ def sync_with_remote():
     갈라져 이후 push가 전부 실패한다(2026-07-01 밤 실제 발생, 약 7시간 방치).
     건드리는 파일이 서로 겹치지 않아(로컬=data/dkh.dat·dkh_plateau_history.json·
     doser_history.json, Actions=images/*·dkh_latest.json·dkh_series.json) rebase
-    충돌은 나지 않는 게 정상."""
+    충돌은 나지 않는 게 정상.
+
+    --autostash: 이 저장소에서 사람이 작업 중이라 커밋 전 변경이 있으면 rebase가
+    거부돼 sync 가 사이클을 통째로 건너뛰었다(2026-07-06 13:54 실제 발생 — 대시보드가
+    반나절 옛 데이터로 남음). autostash 는 그 변경을 stash→rebase→자동 복원한다.
+    복원 충돌 시 git 이 stash 를 보존한 채 남기므로 유실은 없다."""
     fetch = run_git("fetch", "origin", "master")
     if fetch.returncode != 0:
         log.warning("fetch 실패(네트워크?): %s", fetch.stderr.strip())
         return False
-    rebase = run_git("rebase", "origin/master")
+    rebase = run_git("rebase", "--autostash", "origin/master")
     if rebase.returncode != 0:
         log.error("rebase 실패, 수동 확인 필요: %s", rebase.stderr.strip())
         run_git("rebase", "--abort")
