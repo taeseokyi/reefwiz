@@ -172,6 +172,7 @@
 
   .doser-manual {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.4rem;
     justify-content: center;
     margin-top: 0.7rem;
@@ -280,11 +281,15 @@
         <input type="number" id="doserManualMl" min="1.5" max="18" step="0.1" inputmode="decimal"
                placeholder="원액 mL/일" aria-label="수동 도징량(원액 mL/일)">
         <button type="button" class="range-btn" id="doserManualSave">수동 설정</button>
+        <input type="number" id="doserTargetDkh" min="6" max="9" step="0.1" inputmode="decimal"
+               placeholder="목표 dKH" aria-label="목표 dKH">
+        <button type="button" class="range-btn" id="doserTargetSave">목표 설정</button>
       </div>
       <input type="password" class="doser-pat" id="doserPat" hidden
              placeholder="GitHub 토큰 (이 기기 브라우저에만 저장)">
       <p class="chart-caption" id="doserManualStatus"></p>
-      <p class="chart-caption">주 2회(월·목 13시 측정 후) dKH 수준·추세로 자동 조정 · 목표 7.2 dKH ·
+      <p class="chart-caption">주 2회(월·목 13시 측정 후) dKH 수준·추세로 자동 조정 ·
+        목표 <span id="doserTargetLabel">7.2</span> dKH ·
         수동 설정은 몇 분 내(최대 ~5분) 도저에 적용됩니다 ·
         통은 50% 희석액이라 실도징(펌프가 뿜는 부피)은 원액의 2배입니다</p>
     </section>
@@ -687,48 +692,42 @@
     })
     .catch(() => {});
 
-  // 수동 설정 저장 — 대시보드(정적)에는 서버가 없으므로 GitHub API 로
-  // docs/doser_override.json 을 커밋한다. Windows 쪽이 매 측정 종료 후 이 파일을 읽어
-  // 도저에 적용. 토큰(fine-grained, 이 저장소 Contents 쓰기)은 이 기기 브라우저
-  // localStorage 에만 저장된다(저장소는 public이라 값 자체는 공개 — 도징량뿐이라 무해).
+  // 설정 저장 — 대시보드(정적)에는 서버가 없으므로 GitHub API 로 docs/ 밑 JSON 을
+  // 커밋한다. 수동 도징량 = doser_override.json(일회성, Windows 가 매 측정 후 적용),
+  // 목표 dKH = doser_config.json(영속, 매 자동 조정 회차에 읽음). 토큰(fine-grained,
+  // 이 저장소 Contents 쓰기)은 이 기기 브라우저 localStorage 에만 저장된다
+  // (저장소는 public이라 값 자체는 공개 — 도징량·목표뿐이라 무해).
   const DOSER_OV_API =
     "https://api.github.com/repos/taeseokyi/reefwiz/contents/docs/doser_override.json";
-  document.getElementById("doserManualSave").addEventListener("click", async () => {
-    const statusEl = document.getElementById("doserManualStatus");
+  const DOSER_CFG_API =
+    "https://api.github.com/repos/taeseokyi/reefwiz/contents/docs/doser_config.json";
+
+  // 공통 커밋 헬퍼: 성공 true. 진행/실패 문구는 statusEl 에 직접 쓴다.
+  async function ghCommitJson(api, obj, message, statusEl) {
     const patEl = document.getElementById("doserPat");
-    const ml = Math.round(parseFloat(document.getElementById("doserManualMl").value) * 10) / 10;
-    if (!(ml >= 1.5 && ml <= 18)) {
-      statusEl.textContent = "원액 1.5~18 mL/일 범위로 입력하세요";
-      return;
-    }
     const token = localStorage.getItem("reefwiz_pat") || patEl.value.trim();
     if (!token) {
       patEl.hidden = false;
       statusEl.textContent =
         "GitHub 토큰을 입력하세요 (Settings→Developer settings→Fine-grained token, reefwiz 저장소 Contents 쓰기 권한)";
-      return;
+      return false;
     }
     const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" };
     statusEl.textContent = "저장 중…";
     try {
       let sha;
-      const g = await fetch(DOSER_OV_API + "?ref=master", { headers, cache: "no-store" });
+      const g = await fetch(api + "?ref=master", { headers, cache: "no-store" });
       if (g.ok) sha = (await g.json()).sha;
       else if (g.status === 401 || g.status === 403) throw new Error("auth");
-      const body = {
-        message: "config: 도저 수동 설정 " + ml + " mL/일 (대시보드)",
-        content: btoa(JSON.stringify({ ml_day: ml, id: new Date().toISOString() })),
-      };
+      const body = { message: message, content: btoa(JSON.stringify(obj)) };
       if (sha) body.sha = sha;
-      const p = await fetch(DOSER_OV_API, { method: "PUT", headers, body: JSON.stringify(body) });
+      const p = await fetch(api, { method: "PUT", headers, body: JSON.stringify(body) });
       if (p.status === 401 || p.status === 403) throw new Error("auth");
       if (!p.ok) throw new Error("HTTP " + p.status);
       localStorage.setItem("reefwiz_pat", token);
       patEl.hidden = true;
       patEl.value = "";
-      statusEl.textContent =
-        "✅ 저장됨: 원액 " + ml + " mL/일 (" + realDose(ml) +
-        ") — 몇 분 내(최대 ~5분) 적용됩니다";
+      return true;
     } catch (e) {
       if (e.message === "auth") {
         localStorage.removeItem("reefwiz_pat");
@@ -737,8 +736,62 @@
       } else {
         statusEl.textContent = "⚠️ 저장 실패(" + e.message + ") — 잠시 후 다시 시도하세요";
       }
+      return false;
+    }
+  }
+
+  document.getElementById("doserManualSave").addEventListener("click", async () => {
+    const statusEl = document.getElementById("doserManualStatus");
+    const ml = Math.round(parseFloat(document.getElementById("doserManualMl").value) * 10) / 10;
+    if (!(ml >= 1.5 && ml <= 18)) {
+      statusEl.textContent = "원액 1.5~18 mL/일 범위로 입력하세요";
+      return;
+    }
+    const ok = await ghCommitJson(
+      DOSER_OV_API,
+      { ml_day: ml, id: new Date().toISOString() },
+      "config: 도저 수동 설정 " + ml + " mL/일 (대시보드)",
+      statusEl
+    );
+    if (ok)
+      statusEl.textContent =
+        "✅ 저장됨: 원액 " + ml + " mL/일 (" + realDose(ml) +
+        ") — 몇 분 내(최대 ~5분) 적용됩니다";
+  });
+
+  // 목표 dKH — 저장 즉시가 아니라 다음 자동 조정 회차(월·목 13시)부터 반영된다.
+  document.getElementById("doserTargetSave").addEventListener("click", async () => {
+    const statusEl = document.getElementById("doserManualStatus");
+    const t = Math.round(parseFloat(document.getElementById("doserTargetDkh").value) * 10) / 10;
+    if (!(t >= 6.0 && t <= 9.0)) {
+      statusEl.textContent = "목표는 6.0~9.0 dKH 범위로 입력하세요";
+      return;
+    }
+    const ok = await ghCommitJson(
+      DOSER_CFG_API,
+      { target_dkh: t },
+      "config: 도저 목표 " + t + " dKH (대시보드)",
+      statusEl
+    );
+    if (ok) {
+      document.getElementById("doserTargetLabel").textContent = t.toFixed(1);
+      statusEl.textContent =
+        "✅ 목표 저장됨: " + t.toFixed(1) + " dKH — 다음 자동 조정(월·목 13시)부터 적용됩니다";
     }
   });
+
+  // 현재 목표 표시 — 저장된 설정이 있으면 캡션의 기본값(7.2)을 대체하고 입력칸에 미리 채움
+  fetch(DOSER_CFG_API + "?ref=master", {
+    headers: { Accept: "application/vnd.github.raw+json" }, cache: "no-store",
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((cfg) => {
+      if (!cfg || typeof cfg.target_dkh !== "number") return;
+      if (!(cfg.target_dkh >= 6.0 && cfg.target_dkh <= 9.0)) return;
+      document.getElementById("doserTargetLabel").textContent = cfg.target_dkh.toFixed(1);
+      document.getElementById("doserTargetDkh").value = cfg.target_dkh.toFixed(1);
+    })
+    .catch(() => {});
 </script>
 </body>
 </html>

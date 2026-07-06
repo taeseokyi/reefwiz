@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """AquaWiz dKH 기반 AFR 도저 자동 조정 (주 2회: 월·목 13시 측정 종료 후, 래퍼가 호출).
 
-동작 한 줄 요약: 최근 7일 dKH 수준·추세를 보고, 목표(7.2)에 일주일에 걸쳐 접근하도록
-왼쪽 펌프(AFR 50% 용액)의 1회 가동시간(lrt, ms)을 소폭 조정한다.
+동작 한 줄 요약: 최근 7일 dKH 수준·추세를 보고, 목표(기본 7.2, 대시보드에서 변경 가능)에
+일주일에 걸쳐 접근하도록 왼쪽 펌프(AFR 50% 용액)의 1회 가동시간(lrt, ms)을 소폭 조정한다.
 
 - 도저 펌웨어 = ca_reactor_output_controller_v8 (COM12, 9600, LF만 — CR 붙으면 미실행).
   `lrt <ms>` 는 EEPROM 에 저장되지만 **동작 타이머 인터벌은 `refresh all` 을 보내야
@@ -17,6 +17,9 @@
   (사용자 지정 상한 3배=원액 18mL/일) / 변화 200ms 미만은 스킵(데드밴드·EEPROM 마모).
 - 기록: C:\\dkh\\work\\doser_history.json (sync가 docs/로 복사→대시보드 카드),
   상세 로그 C:\\dkh\\doser_adjust.log.
+- ★목표 dKH 설정(2026-07-06): 대시보드가 docs/doser_config.json 에 {target_dkh} 를
+  커밋한다. 일회성 오버라이드와 달리 영속 설정 — 매 자동 조정 회차마다 읽어 목표로
+  쓴다(없음/범위 밖/조회 실패 = 기본 TARGET_DKH). 이력 항목에 target 필드로 기록.
 - ★수동 오버라이드(2026-07-06): 대시보드에서 사용자가 입력한 값은 GitHub API 커밋으로
   docs/doser_override.json 에 올라온다. 이 스크립트는 **매 측정 종료 후**(래퍼가 매회 호출)
   그 파일을 GitHub API 로 읽어(Pages 배포 지연 회피), 아직 적용 안 한 id 면 도저에 적용
@@ -48,11 +51,14 @@ LOG_FILE = r"C:\dkh\doser_adjust.log" if os.name == "nt" else None
 # 무인증 읽기 60회/h 제한이나 우리는 하루 3회라 여유.
 OVERRIDE_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
                 "docs/doser_override.json?ref=master")
+CONFIG_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
+              "docs/doser_config.json?ref=master")
 
 PORT = "COM12"
 BAUD = 9600
 
-TARGET_DKH = 7.2          # 사용자 지정 목표 (현재 AquaWiz 측정 기준, 편향 보정 없음)
+TARGET_DKH = 7.2          # 기본 목표 (AquaWiz 측정 기준, 편향 보정 없음) — doser_config.json 이 우선
+TARGET_LO, TARGET_HI = 6.0, 9.0  # 대시보드 목표 설정 허용 범위(밖이면 무시하고 기본값)
 DAILY_RATE_CAP = 0.25     # dKH/일 — 사용자 지정 일일 변화 상한 (허용 0.5의 절반)
 APPROACH_DAYS = 7.0       # 오차를 이 기간에 걸쳐 좁힌다
 SENS = 0.0058             # dKH/(원액mL·일) — 6/29 볼루스 55mL→+0.32 실측 유도
@@ -121,9 +127,9 @@ def theil_sen_per_day(pts):
     return statistics.median(slopes)
 
 
-def compute(level, slope, cur_lrt):
+def compute(level, slope, cur_lrt, target=TARGET_DKH):
     """새 lrt와 계산 근거를 돌려준다. 적용 여부와 무관한 순수 계산(테스트 용이)."""
-    error = TARGET_DKH - level
+    error = target - level
     desired_rate = max(-DAILY_RATE_CAP, min(DAILY_RATE_CAP, error / APPROACH_DAYS))
     delta_rate = desired_rate - slope
     delta_ml = delta_rate / SENS                      # 원액 mL/일
@@ -218,21 +224,44 @@ def apply_lrt(ser, new_lrt, old_lrt, retries=3):
 
 # ---------- 수동 오버라이드 (대시보드 → GitHub → 여기) ----------
 
-def fetch_override():
-    """docs/doser_override.json 을 GitHub API 로 읽는다. 없음/실패 = None."""
-    req = urllib.request.Request(OVERRIDE_URL, headers={
+def fetch_repo_json(url, label):
+    """저장소 파일을 GitHub API raw 로 읽는다. 없음(404=정상)/실패 = None."""
+    req = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github.raw+json",
         "User-Agent": "reefwiz-doser-adjust",
     })
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.load(resp)
+            return json.load(resp)
     except urllib.error.HTTPError as e:
-        if e.code != 404:  # 404 = 아직 아무도 수동 설정 안 함(정상)
-            log(f"[오버라이드] 조회 실패 HTTP {e.code}")
+        if e.code != 404:
+            log(f"[{label}] 조회 실패 HTTP {e.code}")
         return None
     except Exception as e:
-        log(f"[오버라이드] 조회 실패: {e!r}")
+        log(f"[{label}] 조회 실패: {e!r}")
+        return None
+
+
+def fetch_target():
+    """대시보드가 저장한 목표 dKH(doser_config.json). 없음/형식 오류/범위 밖 = 기본값."""
+    data = fetch_repo_json(CONFIG_URL, "목표설정")
+    if data is None:
+        return TARGET_DKH
+    try:
+        t = float(data["target_dkh"])
+    except (KeyError, TypeError, ValueError):
+        log(f"[목표설정] 형식 오류 무시: {data!r} — 기본 {TARGET_DKH} 사용")
+        return TARGET_DKH
+    if not (TARGET_LO <= t <= TARGET_HI):
+        log(f"[목표설정] 범위({TARGET_LO}~{TARGET_HI}) 밖 {t} 무시 — 기본 {TARGET_DKH} 사용")
+        return TARGET_DKH
+    return t
+
+
+def fetch_override():
+    """docs/doser_override.json 을 GitHub API 로 읽는다. 없음/실패 = None."""
+    data = fetch_repo_json(OVERRIDE_URL, "오버라이드")
+    if data is None:
         return None
     try:
         ml = float(data["ml_day"])
@@ -347,8 +376,10 @@ def main():
         level = statistics.median(kh for _, kh in pts[-3:])
         slope = theil_sen_per_day(pts)
         cur_lrt = int(sys.argv[sys.argv.index("--lrt") + 1]) if "--lrt" in sys.argv else 8000
-        r = compute(level, slope, cur_lrt)
-        print(f"유효 {len(pts)}점 | 수준 {level:.3f} | 추세 {slope:+.3f}/일 | 오차 {r['error']:+.3f}")
+        target = fetch_target()  # 무접속=도저 미접속. 네트워크 실패 시 기본값이라 오프라인 OK
+        r = compute(level, slope, cur_lrt, target)
+        print(f"유효 {len(pts)}점 | 수준 {level:.3f} | 목표 {target} | 추세 {slope:+.3f}/일 "
+              f"| 오차 {r['error']:+.3f}")
         print(f"목표 접근속도 {r['desired_rate']:+.4f}/일 → 필요 Δ {r['delta_rate']:+.4f}/일 "
               f"= 원액 {r['delta_ml']:+.1f}mL/일")
         print(f"lrt {cur_lrt} → {r['new_lrt']}ms "
@@ -374,6 +405,7 @@ def main():
 
     level = statistics.median(kh for _, kh in pts[-3:])
     slope = theil_sen_per_day(pts)
+    target = fetch_target()
 
     # 실전 실행: 장치 조회 → 계산 → (권고 or 적용) → 기록
     try:
@@ -387,7 +419,7 @@ def main():
             record_abort("ls 응답 파싱 실패(BT 순단?)")
             return
 
-        r = compute(level, slope, cur_lrt)
+        r = compute(level, slope, cur_lrt, target)
         mode = "advisory" if computed_run_count(load_history()) < ADVISORY_RUNS else "auto"
         applied = False
         note = ", ".join(r["notes"])
@@ -404,6 +436,7 @@ def main():
         "mode": mode,
         "level": round(level, 3),
         "slope_per_day": round(slope, 3),
+        "target": target,
         "error": r["error"],
         "lrt_old": cur_lrt,
         "lrt_new": r["new_lrt"],
@@ -414,7 +447,7 @@ def main():
         "note": note,
     }
     append_history(entry)
-    log(f"[{mode}] 수준 {level:.3f} 추세 {slope:+.3f}/일 | lrt {cur_lrt}→{r['new_lrt']}ms "
+    log(f"[{mode}] 수준 {level:.3f} 목표 {target} 추세 {slope:+.3f}/일 | lrt {cur_lrt}→{r['new_lrt']}ms "
         f"(원액 {entry['ml_day_old']}→{entry['ml_day_new']}mL/일) | 적용={applied}"
         + (f" | {note}" if note else ""))
 
