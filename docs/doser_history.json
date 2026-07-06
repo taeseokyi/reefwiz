@@ -1,0 +1,1 @@
+[{"ts": "2026-07-06 11:04:41", "mode": "manual", "override_id": "e2e-2026-07-06-1100", "requested_ml": 6.0, "lrt_old": 8000, "lrt_new": 8000, "lgt_min": 240, "ml_day_old": 6.0, "ml_day_new": 6.0, "applied": true, "note": "대시보드 수동 설정"}]
