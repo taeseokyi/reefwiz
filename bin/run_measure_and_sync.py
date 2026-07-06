@@ -6,7 +6,7 @@ WSL 쪽 sync_dkh_dat.py 를 호출해 dkh.dat·평탄 이력을 저장소에 커
 (push 되면 GitHub Actions 가 렌더링 → Pages 갱신).
 측정과 동기화 사이에 doser_adjust.py 를 매회 실행한다(2026-07-06) — 대시보드에서
 입력한 수동 도징 설정(오버라이드)은 매 측정 후 확인·적용하고, 정기 자동 조정은
-월·목 13시 회차(--slot-adjust)만 한다. 조정 이력(doser_history.json)이 같은
+월~금 13시 회차(--slot-adjust)만 한다. 조정 이력(doser_history.json)이 같은
 사이클의 동기화로 대시보드에 올라가도록 sync 앞에 둔다. 조정 실패·타임아웃은
 동기화를 막지 않는다.
 
@@ -25,7 +25,7 @@ import sys
 
 MEASURE_SCRIPT = r"C:\dkh\work\measure_kh_once.py"
 ADJUST_SCRIPT = r"C:\dkh\work\doser_adjust.py"
-ADJUST_WEEKDAYS = (0, 3)   # 월, 목 — 13시 측정 종료 후 도저 조정(주 2회)
+ADJUST_WEEKDAYS = (0, 1, 2, 3, 4)   # 월~금 — 13시 측정 종료 후 도저 조정(주 5회, 2026-07-06 확대)
 ADJUST_TIMEOUT_S = 5 * 60
 WSL_EXE = r"C:\Windows\System32\wsl.exe"
 SYNC_CMD = [
@@ -50,7 +50,7 @@ def log(msg):
 
 
 def is_adjust_slot(start):
-    """월·목 13시 측정 회차인가(도저 조정 실행 여부). 시작 시각 기준으로 판정."""
+    """월~금 13시 측정 회차인가(도저 조정 실행 여부). 시작 시각 기준으로 판정."""
     return start.weekday() in ADJUST_WEEKDAYS and 12 <= start.hour <= 14
 
 
@@ -66,7 +66,7 @@ def main():
     log(f"측정 종료 exit={measure.returncode} → 동기화 시작")
 
     # 1.5) 도저 — 매 측정 후 실행: 대시보드 수동 설정(오버라이드) 확인은 매회,
-    #      정기 자동 조정은 월·목 13시 회차만(--slot-adjust). sync 앞에 두어 조정
+    #      정기 자동 조정은 월~금 13시 회차만(--slot-adjust). sync 앞에 두어 조정
     #      이력이 같은 사이클에 대시보드로 올라가게 한다. 실패해도 sync 를 막지 않는다.
     try:
         adj = subprocess.run(
