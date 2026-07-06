@@ -168,6 +168,29 @@
   .doser-badge.advisory { background: #fdf0dc; color: #9a6b1a; }
   .doser-badge.auto { background: #e0f2e9; color: #1f9e4d; }
   .doser-badge.abort { background: #fbe4e0; color: var(--danger); }
+  .doser-badge.manual { background: #e3ecfa; color: #2b5ea8; }
+
+  .doser-manual {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+    margin-top: 0.7rem;
+  }
+  .doser-manual input, input.doser-pat {
+    border: 1px solid var(--teal-light);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    width: 9.5rem;
+  }
+  input.doser-pat {
+    display: block;
+    margin: 0.5rem auto 0;
+    width: 90%;
+  }
 
   nav.doc-links {
     display: grid;
@@ -253,7 +276,16 @@
           <tbody id="doserRows"></tbody>
         </table>
       </div>
-      <p class="chart-caption">주 2회(월·목 13시 측정 후) dKH 수준·추세로 도징량을 조정합니다 · 목표 7.2 dKH</p>
+      <div class="doser-manual">
+        <input type="number" id="doserManualMl" min="1.5" max="18" step="0.1" inputmode="decimal"
+               placeholder="원액 mL/일" aria-label="수동 도징량(원액 mL/일)">
+        <button type="button" class="range-btn" id="doserManualSave">수동 설정</button>
+      </div>
+      <input type="password" class="doser-pat" id="doserPat" hidden
+             placeholder="GitHub 토큰 (이 기기 브라우저에만 저장)">
+      <p class="chart-caption" id="doserManualStatus"></p>
+      <p class="chart-caption">주 2회(월·목 13시 측정 후) dKH 수준·추세로 자동 조정 · 목표 7.2 dKH ·
+        수동 설정은 다음 측정(05/13/21시) 종료 후 도저에 적용됩니다</p>
     </section>
 
     <nav class="doc-links">
@@ -601,7 +633,10 @@
           "초 × 하루 6회) · " + fmtTs(latest.ts) + " 기준";
       }
 
-      const badge = { advisory: ["권고", "advisory"], auto: ["자동", "auto"], abort: ["중단", "abort"] };
+      const badge = {
+        advisory: ["권고", "advisory"], auto: ["자동", "auto"],
+        manual: ["수동", "manual"], abort: ["중단", "abort"],
+      };
       const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&#34;");
       document.getElementById("doserRows").innerHTML = hist
         .slice(-10)
@@ -622,8 +657,76 @@
           );
         })
         .join("");
+
+      // 아직 도저에 적용 안 된 수동 설정이 있으면 대기 표시 (적용 여부 = 이력의
+      // mode=manual & applied=true 항목의 override_id 와 대조)
+      fetch(DOSER_OV_API + "?ref=master", {
+        headers: { Accept: "application/vnd.github.raw+json" }, cache: "no-store",
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((ov) => {
+          if (!ov || typeof ov.ml_day !== "number") return;
+          const applied = hist.some((e) => e.mode === "manual" && e.applied && e.override_id === ov.id);
+          if (!applied) {
+            document.getElementById("doserManualStatus").textContent =
+              "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 — 다음 측정 종료 후 적용됩니다";
+          }
+        })
+        .catch(() => {});
     })
     .catch(() => {});
+
+  // 수동 설정 저장 — 대시보드(정적)에는 서버가 없으므로 GitHub API 로
+  // docs/doser_override.json 을 커밋한다. Windows 쪽이 매 측정 종료 후 이 파일을 읽어
+  // 도저에 적용. 토큰(fine-grained, 이 저장소 Contents 쓰기)은 이 기기 브라우저
+  // localStorage 에만 저장된다(저장소는 public이라 값 자체는 공개 — 도징량뿐이라 무해).
+  const DOSER_OV_API =
+    "https://api.github.com/repos/taeseokyi/reefwiz/contents/docs/doser_override.json";
+  document.getElementById("doserManualSave").addEventListener("click", async () => {
+    const statusEl = document.getElementById("doserManualStatus");
+    const patEl = document.getElementById("doserPat");
+    const ml = Math.round(parseFloat(document.getElementById("doserManualMl").value) * 10) / 10;
+    if (!(ml >= 1.5 && ml <= 18)) {
+      statusEl.textContent = "원액 1.5~18 mL/일 범위로 입력하세요";
+      return;
+    }
+    const token = localStorage.getItem("reefwiz_pat") || patEl.value.trim();
+    if (!token) {
+      patEl.hidden = false;
+      statusEl.textContent =
+        "GitHub 토큰을 입력하세요 (Settings→Developer settings→Fine-grained token, reefwiz 저장소 Contents 쓰기 권한)";
+      return;
+    }
+    const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" };
+    statusEl.textContent = "저장 중…";
+    try {
+      let sha;
+      const g = await fetch(DOSER_OV_API + "?ref=master", { headers, cache: "no-store" });
+      if (g.ok) sha = (await g.json()).sha;
+      else if (g.status === 401 || g.status === 403) throw new Error("auth");
+      const body = {
+        message: "config: 도저 수동 설정 " + ml + " mL/일 (대시보드)",
+        content: btoa(JSON.stringify({ ml_day: ml, id: new Date().toISOString() })),
+      };
+      if (sha) body.sha = sha;
+      const p = await fetch(DOSER_OV_API, { method: "PUT", headers, body: JSON.stringify(body) });
+      if (p.status === 401 || p.status === 403) throw new Error("auth");
+      if (!p.ok) throw new Error("HTTP " + p.status);
+      localStorage.setItem("reefwiz_pat", token);
+      patEl.hidden = true;
+      patEl.value = "";
+      statusEl.textContent =
+        "✅ 저장됨: 원액 " + ml + " mL/일 — 다음 측정(05/13/21시) 종료 후 적용됩니다";
+    } catch (e) {
+      if (e.message === "auth") {
+        localStorage.removeItem("reefwiz_pat");
+        patEl.hidden = false;
+        statusEl.textContent = "⚠️ 토큰 인증 실패 — 토큰을 다시 입력하세요";
+      } else {
+        statusEl.textContent = "⚠️ 저장 실패(" + e.message + ") — 잠시 후 다시 시도하세요";
+      }
+    }
+  });
 </script>
 </body>
 </html>

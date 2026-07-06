@@ -4,9 +4,11 @@
 measure_kh_once.py 를 예전과 똑같이 실행하고(측정 로직·인자 무수정), 끝나면 곧바로
 WSL 쪽 sync_dkh_dat.py 를 호출해 dkh.dat·평탄 이력을 저장소에 커밋/push 한다
 (push 되면 GitHub Actions 가 렌더링 → Pages 갱신).
-월·목 13시 회차는 측정과 동기화 사이에 doser_adjust.py(AFR 도저 자동 조정)를 끼워
-실행한다(2026-07-06) — 조정 이력(doser_history.json)이 같은 사이클의 동기화로
-대시보드에 올라가도록 sync 앞에 둔다. 조정 실패·타임아웃은 동기화를 막지 않는다.
+측정과 동기화 사이에 doser_adjust.py 를 매회 실행한다(2026-07-06) — 대시보드에서
+입력한 수동 도징 설정(오버라이드)은 매 측정 후 확인·적용하고, 정기 자동 조정은
+월·목 13시 회차(--slot-adjust)만 한다. 조정 이력(doser_history.json)이 같은
+사이클의 동기화로 대시보드에 올라가도록 sync 앞에 둔다. 조정 실패·타임아웃은
+동기화를 막지 않는다.
 
 예전에는 WSL cron(30 6,14,22 * * *)이 측정 시작 +1.5h 에 돌았는데, 측정이 1.5h 를
 넘기면 그 회차가 부분 데이터로 올라가는 문제가 있어 완료 직후 실행으로 바꿈(2026-07-05).
@@ -63,22 +65,23 @@ def main():
     )
     log(f"측정 종료 exit={measure.returncode} → 동기화 시작")
 
-    # 1.5) 도저 조정(월·목 13시 회차만) — sync 앞에 두어 조정 이력이 같은 사이클에
-    #      대시보드로 올라가게 한다. 실패해도 sync 를 막지 않는다.
-    if is_adjust_slot(start):
-        try:
-            adj = subprocess.run(
-                [sys.executable, ADJUST_SCRIPT],
-                cwd=r"C:\dkh\work",
-                capture_output=True,
-                timeout=ADJUST_TIMEOUT_S,
-                creationflags=CREATE_NO_WINDOW,
-            )
-            log(f"도저 조정 종료 exit={adj.returncode} (상세는 doser_adjust.log)")
-        except subprocess.TimeoutExpired:
-            log(f"도저 조정 타임아웃({ADJUST_TIMEOUT_S}s) — 도저는 기존 설정으로 계속 동작")
-        except OSError as e:
-            log(f"도저 조정 실행 실패: {e}")
+    # 1.5) 도저 — 매 측정 후 실행: 대시보드 수동 설정(오버라이드) 확인은 매회,
+    #      정기 자동 조정은 월·목 13시 회차만(--slot-adjust). sync 앞에 두어 조정
+    #      이력이 같은 사이클에 대시보드로 올라가게 한다. 실패해도 sync 를 막지 않는다.
+    try:
+        adj = subprocess.run(
+            [sys.executable, ADJUST_SCRIPT]
+            + (["--slot-adjust"] if is_adjust_slot(start) else []),
+            cwd=r"C:\dkh\work",
+            capture_output=True,
+            timeout=ADJUST_TIMEOUT_S,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        log(f"도저 확인/조정 종료 exit={adj.returncode} (상세는 doser_adjust.log)")
+    except subprocess.TimeoutExpired:
+        log(f"도저 조정 타임아웃({ADJUST_TIMEOUT_S}s) — 도저는 기존 설정으로 계속 동작")
+    except OSError as e:
+        log(f"도저 조정 실행 실패: {e}")
 
     # 2) 동기화 — 측정 성공/실패와 무관하게 실행(에러 래치·미평탄 음수도 대시보드에 올라가야 함)
     try:

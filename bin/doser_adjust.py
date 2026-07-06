@@ -17,7 +17,14 @@
   (사용자 지정 상한 3배=원액 18mL/일) / 변화 200ms 미만은 스킵(데드밴드·EEPROM 마모).
 - 기록: C:\\dkh\\work\\doser_history.json (sync가 docs/로 복사→대시보드 카드),
   상세 로그 C:\\dkh\\doser_adjust.log.
-- CLI: --check(장치 조회만) / --dry-run [--lrt N](계산만, 시리얼 무접속).
+- ★수동 오버라이드(2026-07-06): 대시보드에서 사용자가 입력한 값은 GitHub API 커밋으로
+  docs/doser_override.json 에 올라온다. 이 스크립트는 **매 측정 종료 후**(래퍼가 매회 호출)
+  그 파일을 GitHub API 로 읽어(Pages 배포 지연 회피), 아직 적용 안 한 id 면 도저에 적용
+  하고 이력(mode=manual)에 남긴다 → sync 로 대시보드에 "적용됨" 표시. 새 오버라이드가
+  있는 회차는 자동 조정을 건너뛴다(수동 우선). 적용 성공한 id 만 상태 파일에 기록되므로
+  실패(BT 순단 등)하면 다음 측정 후 자동 재시도된다.
+- CLI: (인자 없음)=오버라이드 확인만 / --slot-adjust=오버라이드 확인+정기 자동 조정
+  (래퍼가 월·목 13시 회차에만 붙임) / --check(장치 조회만) / --dry-run(계산만, 무접속).
 
 원본은 저장소 bin/, 배포본은 C:\\dkh\\work\\ (수정 시 재복사 필수).
 """
@@ -27,11 +34,20 @@ import re
 import statistics
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 
 DAT_FILE = r"C:\dkh\work\dkh.dat"
 HISTORY_FILE = r"C:\dkh\work\doser_history.json"
+OVERRIDE_STATE_FILE = r"C:\dkh\work\doser_override_state.json"
 LOG_FILE = r"C:\dkh\doser_adjust.log" if os.name == "nt" else None
+
+# 수동 오버라이드는 대시보드가 GitHub API 로 커밋한 파일. Pages URL 이 아니라 GitHub API
+# raw 로 읽는 이유 = Pages 는 배포까지 수 분 지연이 있고 CDN 캐시도 낌(API 는 즉시 반영).
+# 무인증 읽기 60회/h 제한이나 우리는 하루 3회라 여유.
+OVERRIDE_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
+                "docs/doser_override.json?ref=master")
 
 PORT = "COM12"
 BAUD = 9600
@@ -78,8 +94,10 @@ def ml_day_to_lrt(ml_day):
     return ml_day / (DOSES_PER_DAY * DILUTION) * MS_PER_ML
 
 
-def read_recent_kh(path=DAT_FILE, rows=ROWS):
+def read_recent_kh(path=None, rows=ROWS):
     """dkh.dat 마지막 rows행에서 (행위치, tank_kh) 유효값만. 0.0=에러, 음수=미평탄 제외."""
+    if path is None:
+        path = DAT_FILE  # 기본 인자에 박으면 테스트에서 모듈 변수 교체가 안 먹음
     with open(path, encoding="utf-8", errors="replace") as f:
         lines = [ln.split() for ln in f.read().splitlines() if ln.strip()]
     pts = []
@@ -198,6 +216,87 @@ def apply_lrt(ser, new_lrt, old_lrt, retries=3):
     return False
 
 
+# ---------- 수동 오버라이드 (대시보드 → GitHub → 여기) ----------
+
+def fetch_override():
+    """docs/doser_override.json 을 GitHub API 로 읽는다. 없음/실패 = None."""
+    req = urllib.request.Request(OVERRIDE_URL, headers={
+        "Accept": "application/vnd.github.raw+json",
+        "User-Agent": "reefwiz-doser-adjust",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:  # 404 = 아직 아무도 수동 설정 안 함(정상)
+            log(f"[오버라이드] 조회 실패 HTTP {e.code}")
+        return None
+    except Exception as e:
+        log(f"[오버라이드] 조회 실패: {e!r}")
+        return None
+    try:
+        ml = float(data["ml_day"])
+        oid = str(data["id"])
+    except (KeyError, TypeError, ValueError):
+        log(f"[오버라이드] 형식 오류 무시: {data!r}")
+        return None
+    return {"ml_day": ml, "id": oid}
+
+
+def load_applied_override_id():
+    try:
+        with open(OVERRIDE_STATE_FILE, encoding="utf-8") as f:
+            return json.load(f).get("applied_id")
+    except (OSError, ValueError):
+        return None
+
+
+def save_applied_override_id(oid):
+    with open(OVERRIDE_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"applied_id": oid, "applied_at": f"{datetime.now():%Y-%m-%d %H:%M:%S}"}, f)
+
+
+def apply_manual_override(ov):
+    """사용자 지정 값(원액 mL/일)을 도저에 적용. 성공 시 상태 저장(재시도 방지)."""
+    raw_lrt = ml_day_to_lrt(ov["ml_day"])
+    new_lrt = int(round(raw_lrt / 100.0) * 100)
+    clamped = max(LRT_MIN, min(LRT_MAX, new_lrt))
+    note = "대시보드 수동 설정"
+    if clamped != new_lrt:
+        note += f" | 범위 클램프 {new_lrt}→{clamped}ms"
+        new_lrt = clamped
+
+    try:
+        ser = open_doser()
+    except Exception as e:
+        log(f"[수동] COM12 연결 실패: {e} — 다음 측정 후 재시도")
+        return False
+    with ser:
+        cur_lrt, cur_lgt = query_left(ser)
+        if cur_lrt is None:
+            log("[수동] ls 파싱 실패 — 다음 측정 후 재시도")
+            return False
+        applied = True if new_lrt == cur_lrt else apply_lrt(ser, new_lrt, cur_lrt)
+
+    append_history({
+        "ts": f"{datetime.now():%Y-%m-%d %H:%M:%S}",
+        "mode": "manual",
+        "override_id": ov["id"],
+        "requested_ml": ov["ml_day"],
+        "lrt_old": cur_lrt,
+        "lrt_new": new_lrt,
+        "lgt_min": cur_lgt,
+        "ml_day_old": round(lrt_to_ml_day(cur_lrt), 2),
+        "ml_day_new": round(lrt_to_ml_day(new_lrt), 2),
+        "applied": applied,
+        "note": note if applied else note + " | 적용 실패 — 다음 측정 후 재시도",
+    })
+    if applied:
+        save_applied_override_id(ov["id"])
+    log(f"[수동] {ov['ml_day']}mL/일 요청(id={ov['id']}) → lrt {cur_lrt}→{new_lrt}ms 적용={applied}")
+    return applied
+
+
 # ---------- 이력 ----------
 
 def load_history():
@@ -240,18 +339,13 @@ def main():
               f"(≈{lrt_to_ml_day(lrt):.1f}mL 원액/일)" if lrt else "ls 파싱 실패")
         return
 
-    pts = read_recent_kh()
-    if len(pts) < MIN_VALID:
-        if "--dry-run" in sys.argv:
+    if "--dry-run" in sys.argv:
+        pts = read_recent_kh()
+        if len(pts) < MIN_VALID:
             print(f"유효 측정 부족: {len(pts)}/{MIN_VALID}")
             return
-        record_abort(f"유효 측정 부족({len(pts)}/{MIN_VALID})")
-        return
-
-    level = statistics.median(kh for _, kh in pts[-3:])
-    slope = theil_sen_per_day(pts)
-
-    if "--dry-run" in sys.argv:
+        level = statistics.median(kh for _, kh in pts[-3:])
+        slope = theil_sen_per_day(pts)
         cur_lrt = int(sys.argv[sys.argv.index("--lrt") + 1]) if "--lrt" in sys.argv else 8000
         r = compute(level, slope, cur_lrt)
         print(f"유효 {len(pts)}점 | 수준 {level:.3f} | 추세 {slope:+.3f}/일 | 오차 {r['error']:+.3f}")
@@ -261,6 +355,25 @@ def main():
               f"({lrt_to_ml_day(cur_lrt):.1f} → {lrt_to_ml_day(r['new_lrt']):.1f}mL 원액/일)"
               + (" | " + ", ".join(r["notes"]) if r["notes"] else ""))
         return
+
+    # 1) 수동 오버라이드 — 매 측정 종료 후 확인, 아직 적용 안 한 id 면 적용하고 이번
+    #    회차의 자동 조정은 생략(수동 우선). 실패 시 상태 미저장 → 다음 측정 후 재시도.
+    ov = fetch_override()
+    if ov and ov["id"] != load_applied_override_id():
+        apply_manual_override(ov)
+        return
+
+    # 2) 정기 자동 조정 — 월·목 13시 회차(래퍼가 --slot-adjust 부여)만
+    if "--slot-adjust" not in sys.argv:
+        return
+
+    pts = read_recent_kh()
+    if len(pts) < MIN_VALID:
+        record_abort(f"유효 측정 부족({len(pts)}/{MIN_VALID})")
+        return
+
+    level = statistics.median(kh for _, kh in pts[-3:])
+    slope = theil_sen_per_day(pts)
 
     # 실전 실행: 장치 조회 → 계산 → (권고 or 적용) → 기록
     try:
