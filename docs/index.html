@@ -285,7 +285,7 @@
              placeholder="GitHub 토큰 (이 기기 브라우저에만 저장)">
       <p class="chart-caption" id="doserManualStatus"></p>
       <p class="chart-caption">주 2회(월·목 13시 측정 후) dKH 수준·추세로 자동 조정 · 목표 7.2 dKH ·
-        수동 설정은 다음 측정(05/13/21시) 종료 후 도저에 적용됩니다</p>
+        수동 설정은 몇 분 내(최대 ~5분) 도저에 적용됩니다</p>
     </section>
 
     <nav class="doc-links">
@@ -669,7 +669,7 @@
           const applied = hist.some((e) => e.mode === "manual" && e.applied && e.override_id === ov.id);
           if (!applied) {
             document.getElementById("doserManualStatus").textContent =
-              "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 — 다음 측정 종료 후 적용됩니다";
+              "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 — 몇 분 내 적용됩니다";
           }
         })
         .catch(() => {});
@@ -716,7 +716,7 @@
       patEl.hidden = true;
       patEl.value = "";
       statusEl.textContent =
-        "✅ 저장됨: 원액 " + ml + " mL/일 — 다음 측정(05/13/21시) 종료 후 적용됩니다";
+        "✅ 저장됨: 원액 " + ml + " mL/일 — 몇 분 내(최대 ~5분) 적용됩니다";
     } catch (e) {
       if (e.message === "auth") {
         localStorage.removeItem("reefwiz_pat");
