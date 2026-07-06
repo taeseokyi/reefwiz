@@ -285,7 +285,8 @@
              placeholder="GitHub 토큰 (이 기기 브라우저에만 저장)">
       <p class="chart-caption" id="doserManualStatus"></p>
       <p class="chart-caption">주 2회(월·목 13시 측정 후) dKH 수준·추세로 자동 조정 · 목표 7.2 dKH ·
-        수동 설정은 몇 분 내(최대 ~5분) 도저에 적용됩니다</p>
+        수동 설정은 몇 분 내(최대 ~5분) 도저에 적용됩니다 ·
+        통은 50% 희석액이라 실도징(펌프가 뿜는 부피)은 원액의 2배입니다</p>
     </section>
 
     <nav class="doc-links">
@@ -610,6 +611,15 @@
       document.getElementById("plateauMeta").textContent = "불러오지 못했습니다";
     });
 
+  // 통에는 50% 희석액이 들어 있어 펌프가 실제로 뿜는 부피(실도징)는 원액의 2배.
+  // doser_adjust.py 의 DILUTION=0.5, DOSES_PER_DAY=6 과 같은 값이어야 한다.
+  const DOSER_DILUTION = 0.5, DOSER_DOSES_PER_DAY = 6;
+  const realDose = (mlStock) => {
+    const daily = mlStock / DOSER_DILUTION;
+    return "실도징 " + (daily / DOSER_DOSES_PER_DAY).toFixed(1) + " mL × " +
+      DOSER_DOSES_PER_DAY + "회 = " + daily.toFixed(1) + " mL/일";
+  };
+
   // 도저 자동 조정 이력 — doser_adjust.py(Windows)가 남긴 기록을 sync가 docs/로 복사.
   // 파일이 아직 없으면(404, 도입 전) 카드 자체를 숨긴 채 둔다.
   fetch("doser_history.json", { cache: "no-store" })
@@ -629,8 +639,8 @@
         const curMl = latest.applied ? latest.ml_day_new : latest.ml_day_old;
         const curLrt = latest.applied ? latest.lrt_new : latest.lrt_old;
         document.getElementById("doserNow").textContent =
-          "현재 도징: 원액 " + curMl.toFixed(1) + " mL/일 (1회 " + (curLrt / 1000).toFixed(1) +
-          "초 × 하루 6회) · " + fmtTs(latest.ts) + " 기준";
+          "현재 도징: 원액 " + curMl.toFixed(1) + " mL/일 (" + realDose(curMl) +
+          ", 1회 " + (curLrt / 1000).toFixed(1) + "초) · " + fmtTs(latest.ts) + " 기준";
       }
 
       const badge = {
@@ -669,7 +679,8 @@
           const applied = hist.some((e) => e.mode === "manual" && e.applied && e.override_id === ov.id);
           if (!applied) {
             document.getElementById("doserManualStatus").textContent =
-              "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 — 몇 분 내 적용됩니다";
+              "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 (" + realDose(ov.ml_day) +
+              ") — 몇 분 내 적용됩니다";
           }
         })
         .catch(() => {});
@@ -716,7 +727,8 @@
       patEl.hidden = true;
       patEl.value = "";
       statusEl.textContent =
-        "✅ 저장됨: 원액 " + ml + " mL/일 — 몇 분 내(최대 ~5분) 적용됩니다";
+        "✅ 저장됨: 원액 " + ml + " mL/일 (" + realDose(ml) +
+        ") — 몇 분 내(최대 ~5분) 적용됩니다";
     } catch (e) {
       if (e.message === "auth") {
         localStorage.removeItem("reefwiz_pat");
