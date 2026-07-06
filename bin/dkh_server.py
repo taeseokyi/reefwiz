@@ -10,7 +10,7 @@ from socketserver import ThreadingMixIn
 
 DAT_FILE = os.path.join(os.path.dirname(__file__), "dkh.dat")
 HOST = "0.0.0.0"
-PORT = 9090
+PORT = 9999  # 2026-07-06 사용자 요청으로 9090→9999 변경
 
 _log_file = r"C:\dkh\dkh_server.log" if os.name == "nt" else None
 logging.basicConfig(
