@@ -12,7 +12,9 @@
   (하루 횟수는 유지). 호스트가 죽어도 도저는 EEPROM 값으로 자율 동작(실패 안전).
   현재 lrt 는 매번 `ls` 로 장치에서 직접 읽는다(사용자 수동 변경도 자동 반영).
 - 권고 모드: 계산이 성공한 첫 ADVISORY_RUNS(2)회는 기록만 하고 lrt 를 바꾸지 않는다.
-  3회차부터 자동 적용(전송→에코 검증→ls 재확인, 실패 시 변경 포기).
+  ★AUTO_APPLY=False(사용자 지시 2026-07-06): 그 이후로도 자동 적용하지 않고 계속
+  권고만 남긴다(수동 오버라이드 적용은 사용자 지시이므로 그대로 동작). 자동 적용을
+  재개하려면 AUTO_APPLY=True 로 바꾸고 배포본 재복사.
 - 안전 레일: 유효 측정 부족 시 중단 / 1회 조정 스텝 ±30% / lrt 절대범위 2000~24000ms
   (사용자 지정 상한 3배=원액 18mL/일) / 변화 200ms 미만은 스킵(데드밴드·EEPROM 마모).
 - 기록: C:\\dkh\\work\\doser_history.json (sync가 docs/로 복사→대시보드 카드),
@@ -77,6 +79,8 @@ VALID_LO, VALID_HI = 4.0, 12.0
 ROW_DAYS = 8.0 / 24.0     # 행 간격 8시간 가정
 
 ADVISORY_RUNS = 2         # 계산 성공 기준 처음 2회는 권고만(적용 안 함)
+AUTO_APPLY = False        # ★False=자동 적용 영구 꺼짐, 계속 권고만(사용자 지시 2026-07-06).
+                          #   수동 오버라이드(대시보드)는 이 스위치와 무관하게 적용된다.
 HISTORY_MAX = 52
 
 
@@ -420,7 +424,8 @@ def main():
             return
 
         r = compute(level, slope, cur_lrt, target)
-        mode = "advisory" if computed_run_count(load_history()) < ADVISORY_RUNS else "auto"
+        mode = ("advisory" if not AUTO_APPLY
+                or computed_run_count(load_history()) < ADVISORY_RUNS else "auto")
         applied = False
         note = ", ".join(r["notes"])
 
