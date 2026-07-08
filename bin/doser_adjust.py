@@ -86,13 +86,16 @@ HISTORY_MAX = 52
 
 def log(msg):
     line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}"
-    print(line)
     if LOG_FILE:
         try:
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except OSError:
             pass
+    try:
+        print(line)
+    except Exception:
+        pass  # 파이프 인코딩(cp949) 예외 등이 로그 파일 기록까지 막으면 안 됨(2026-07-08 보강)
 
 
 def lrt_to_ml_day(lrt_ms):

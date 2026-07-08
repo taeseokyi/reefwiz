@@ -77,7 +77,14 @@ def main():
             timeout=ADJUST_TIMEOUT_S,
             creationflags=CREATE_NO_WINDOW,
         )
-        log(f"도저 확인/조정 종료 exit={adj.returncode} (상세는 doser_adjust.log)")
+        msg = f"도저 확인/조정 종료 exit={adj.returncode} (상세는 doser_adjust.log)"
+        if adj.returncode != 0:
+            # doser_adjust.log 에 아무 흔적 없이 죽는 경우(2026-07-08 13:41)가 있어
+            # 실패 시 자식 출력 꼬리를 여기 남긴다. 자식은 Windows python(로케일 cp949).
+            err = (adj.stderr + adj.stdout).decode("cp949", errors="replace").strip()
+            tail = " ⏎ ".join(err.splitlines()[-8:])[-1000:]
+            msg += f" | 출력: {tail}" if tail else " | 출력 없음"
+        log(msg)
     except subprocess.TimeoutExpired:
         log(f"도저 조정 타임아웃({ADJUST_TIMEOUT_S}s) — 도저는 기존 설정으로 계속 동작")
     except OSError as e:
