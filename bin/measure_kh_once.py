@@ -44,9 +44,13 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
              ⑤모터는 재시도 시 먼저 정지(mNs) 후 재송신 → 미전달이든 진행중이든 중복 구동 방지.
     calkh·calref(--setref) 모두 같은 send()/measure_until_flat 를 타므로 동일 적용.
   - ★규칙: 액체 이동(mXf/mXb) 직전 airoff. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
-  - 오류/비정상 종료 시 비상 정리(_safe_cleanup): 에어 OFF + 측정챔버 배출 + KCl 소크 복원.
+  - 오류/비정상 종료 시 비상 정리(_safe_cleanup): 에어 OFF + 챔버 배출/회수 + KCl 소크 복원.
     ★전제조건 우선(2026-07-10): airoff·ton 실패 시 CLEANUP_RECOVERY_SECS 까지 링크 회복을
     기다려 전제조건부터 재시도, 끝내 실패하면 모터 생략(밀폐계라 이송 무효 — 7/9 21시 실증).
+    ★진행 지점 판단 선행(2026-07-10, 사용자 원칙): 액체 위치(_liquid)를 추적해 상태별
+    레시피로 정리(챔버=KCl→조치 불필요 / tank수→배출 / ref수→5L 회수). 위치 불명(UNKNOWN,
+    이송 도중 중단)이면 자동 정리 대신 현 상태 동결+경고 — 잘못된 이송(KCl 을 본수조로 배출,
+    참조수 소실 등)보다 동결이 낫다.
   ※ 측정 중 폭기라 절대 pH 에 흐름(streaming) 오프셋 — V3 이전 절대값과 직접 비교 금지
     (오프셋은 ref·tank 공통모드라 ΔpH/dKH 엔 무영향).
   ※ 널테스트 한정: ref 채우기 전 헹굼 생략. 정상운영(KH 다름) 복귀 시 복원 필수.
@@ -124,6 +128,11 @@ LINK_RETRY_INTERVAL = 60         # 링크 사망 시 재접속 시도 간격(초
 #   액체가 안 움직인다('완료' 응답≠이송 성공 — 라인 건조로 확인). 전제조건 실패(링크 사망) 시
 #   아래 상한까지 재접속을 기다려 전제조건부터 재시도한다. 폭기 유지 상태라 기다려도 무해.
 CLEANUP_RECOVERY_SECS = 1800     # 비상정리 전제조건(airoff·ton) 실패 시 링크 회복 대기 상한(초)
+# ★진행 상태 추적(2026-07-10, 사용자 원칙 "복원은 진행 지점 판단이 선행"): 비상정리가 올바른
+#   레시피를 고르려면 액체가 어디 있는지 알아야 한다. 액체 이동(_move_liquid) 성공 시점마다
+#   갱신하고, 이동 도중 실패(전달/이송량 불명)면 UNKNOWN — 이후 성공해도 확신은 복구되지
+#   않으므로(sticky) 비상정리는 모터를 돌리지 않고 현 상태를 동결한다.
+_liquid = {'chamber': 'KCL', 'holding': 'EMPTY'}   # chamber: KCL|EMPTY|TANK|REF|UNKNOWN, holding: EMPTY|TANK|UNKNOWN
 
 DAT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dkh.dat')
 LOG_FILE = r'C:\dkh\measure_kh.log' if os.name == 'nt' else None
@@ -465,6 +474,18 @@ def _motor_ok(lines, idx):
     return any(f'[모터{idx}] 완료' in ln for ln in (lines or []))
 
 
+def _move_liquid(ser, motor_idx, cmd, chamber_after, holding_after):
+    """★send_motor + 진행 상태(_liquid) 갱신(2026-07-10). 송신~완료 사이 예외 또는 '완료'
+    미수신이면 이송량 불명 → UNKNOWN 유지. 한번 UNKNOWN 이 되면 이후 이동이 성공해도
+    확신이 복구되지 않는다(sticky) → 비상정리가 자동 정리를 포기하고 동결한다."""
+    was_known = 'UNKNOWN' not in (_liquid['chamber'], _liquid['holding'])
+    _liquid['chamber'] = _liquid['holding'] = 'UNKNOWN'   # 이동 중(실패 시 이대로 남음)
+    lines = send_motor(ser, motor_idx, cmd)
+    if was_known and _motor_ok(lines, motor_idx):
+        _liquid['chamber'], _liquid['holding'] = chamber_after, holding_after
+    return lines
+
+
 # ─────────────────────────────────────────────
 # 평형(plateau) 추종 측정 — 정수 milli-pH 윈도우 span
 # ─────────────────────────────────────────────
@@ -609,14 +630,35 @@ def _cleanup_precond(ser):
 
 
 def _safe_cleanup(ser):
-    """에어 OFF + 측정챔버 배출 + KCl 소크 복원. 각 단계 guard(예외/타임아웃 무시).
+    """에러/비정상 종료 시 비상 정리. 각 단계 guard(예외/타임아웃 무시).
     KCl 소크가 끝내 실패하면 큰 경고를 남긴다(이 경로에선 main 이 dkh.dat 에 0.0 기록).
     ★전제조건 우선(2026-07-10, 7/9 21시 사후): 예전엔 airoff·ton 실패(링크 사망)를 무시하고
       모터를 돌려 '완료' 응답으로 거짓 성공을 남겼다(실물은 이송 무효=KCl 미복원). 이제
       전제조건이 실패하면 CLEANUP_RECOVERY_SECS 까지 재접속을 기다려 전제조건부터 재시도하고,
       끝내 실패하면 모터를 생략한다(헛도는 이송+거짓 성공 로그 방지, 챔버 상태 동결=프로브는
-      수조수에 젖은 채 유지)."""
-    print("\n[비상정리] 에어 OFF + 측정챔버 배출 + KCl 소크 복원 시도")
+      수조수에 젖은 채 유지).
+    ★진행 지점 판단 선행(2026-07-10, 사용자 원칙): _liquid 로 "어디까지 갔나"를 먼저 판단해
+      상태별 레시피로 정리한다. 위치 불명이면 자동 정리보다 동결이 낫다:
+        챔버 UNKNOWN → 모터 생략(동결)+★★경고   (이송 도중 중단 — 잘못된 이송 방지)
+        챔버 KCL     → 조치 불필요               (시작 전 에러 = 이미 목표 상태=프로브 소크)
+        챔버 TANK    → m2b(→홀딩) → m1b(→본수조) → m3f KCl   (7/9 유형)
+        챔버 REF     → m4b(→5L 순환회수) → m1b → m3f KCl     (참조수 배출 금지=회수 원칙)
+        챔버 EMPTY   → (홀딩에 tank 수 있으면 m1b) → m3f KCl"""
+    ch, hd = _liquid['chamber'], _liquid['holding']
+    print(f"\n[비상정리] 진행 지점 판단: 챔버={ch} 홀딩={hd}")
+    if 'UNKNOWN' in (ch, hd):
+        print("★★[비상정리] 액체 위치 불명(이송 도중 중단) — 자동 정리 생략(현 상태 동결). "
+              "챔버·홀딩·KCl 수동 확인 필요")
+        print("★★[경고] 비상 KCl 소크도 미완료 — 프로브가 KCl 없이 방치됐을 수 있음! 수동 확인 필요")
+        return
+    if ch == 'KCL':
+        # 준비 이전 에러 — 챔버는 직전 런이 남긴 KCl 소크 상태 그대로 = 이미 목표 상태.
+        # (직전 런이 동결로 끝났다면 KCl 이 아닐 수 있으나, 그 런이 이미 ★★경고를 남겼다.)
+        print("    [비상정리] 챔버=KCl 소크 상태(목표 상태) — 모터 조치 불필요")
+        try: send(ser, 'airoff', stop_pattern='OFF', timeout=5)
+        except Exception: pass
+        return
+    print("[비상정리] 에어 OFF + 챔버 배출/회수 + KCl 소크 복원 시도")
     pre_ok = _cleanup_precond(ser)
     if not pre_ok:
         deadline = time.time() + CLEANUP_RECOVERY_SECS
@@ -631,14 +673,22 @@ def _safe_cleanup(ser):
     if pre_ok:
         # ★호스 스왑 후 측정챔버 배출 경로 = m2(측정챔버→홀딩) → m1(홀딩→본수조).
         #   (m1 단독은 이제 홀딩↔본수조라 측정챔버를 못 비움 → KCl 오버플로 방지 위해 m2 먼저)
-        try: send_motor(ser, 2, 'm2b:68')   # 측정챔버 → 홀딩 (비우기)
-        except Exception: pass
-        try: send_motor(ser, 1, 'm1b:82')   # 홀딩 → 본수조 (배출)
-        except Exception: pass
-        try:
-            kcl_lines = send_motor(ser, 3, 'm3f:60')   # KCl 소크
-            kcl_ok = _motor_ok(kcl_lines, 3)
-        except Exception: pass
+        if ch == 'TANK':
+            try: _move_liquid(ser, 2, 'm2b:68', 'EMPTY', 'TANK')   # 측정챔버 → 홀딩 (비우기)
+            except Exception: pass
+        elif ch == 'REF':
+            try: _move_liquid(ser, 4, 'm4b:70', 'EMPTY', hd)       # 측정챔버 → 5L 회수
+            except Exception: pass
+        if _liquid['holding'] == 'TANK':
+            try: _move_liquid(ser, 1, 'm1b:82', 'EMPTY', 'EMPTY')  # 홀딩 → 본수조 (배출)
+            except Exception: pass
+        if (_liquid['chamber'], _liquid['holding']) == ('EMPTY', 'EMPTY'):
+            try:
+                kcl_lines = _move_liquid(ser, 3, 'm3f:60', 'KCL', 'EMPTY')   # KCl 소크
+                kcl_ok = _motor_ok(kcl_lines, 3)
+            except Exception: pass
+        else:
+            print("★★[비상정리] 배출/회수 미완(위치 불명) — KCl 재공급 생략(현 상태 동결)")
         try: send(ser, 'airoff', stop_pattern='OFF', timeout=5)
         except Exception: pass
     else:
@@ -656,6 +706,8 @@ def run_measurement(ser, tank_dkh=None):
     calref 모드는 측정 시작 전에 setref:<tank_dkh> 를 펌웨어에 기록·검증한다."""
     calref = tank_dkh is not None
     completed = False
+    # ★진행 상태 초기화(2026-07-10): 런 시작 = 직전 런이 남긴 KCl 소크 상태.
+    _liquid['chamber'], _liquid['holding'] = 'KCL', 'EMPTY'
     try:
         # ── calref 모드: 수조 실측 dKH 를 setref 로 기록(측정 전 즉시 검증) ──
         #    범위(0.5~30.0) 밖이거나 응답 이상이면 긴 측정 전에 바로 실패시킨다.
@@ -685,11 +737,11 @@ def run_measurement(ser, tank_dkh=None):
         send(ser, 'airoff', stop_pattern='OFF')
         send(ser, 'ton', stop_pattern='수조ON')
         print("\n[준비] KCl 배출 (측정 챔버)")
-        send_motor(ser, 3, 'm3b:68')
+        _move_liquid(ser, 3, 'm3b:68', 'EMPTY', 'EMPTY')
         print("\n[tank] 본수조수 → 홀딩 (m1)")
-        send_motor(ser, 1, 'm1f:70')
+        _move_liquid(ser, 1, 'm1f:70', 'EMPTY', 'TANK')
         print("\n[tank] 홀딩 → 측정 챔버 (m2)")
-        send_motor(ser, 2, 'm2f:60')
+        _move_liquid(ser, 2, 'm2f:60', 'TANK', 'EMPTY')
 
         # ── [A] 폭기 ON (측정챔버 tank + 5L 위즈수조 동시) — tank 평탄까지 측정 ──
         #    이 동안 ref(5L)는 동시 폭기로 평형에 도달 → [B] ref 측정이 빨라짐(co-aeration).
@@ -706,9 +758,9 @@ def run_measurement(ser, tank_dkh=None):
         send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff (기포기 off)
         send(ser, 'ton', stop_pattern='수조ON')
         print("\n[tank] 측정챔버 → 홀딩 임시 파킹 (m2 역방향)")
-        send_motor(ser, 2, 'm2b:68')
+        _move_liquid(ser, 2, 'm2b:68', 'EMPTY', 'TANK')
         print("\n[ref] 참조수 5L → 측정 챔버 (m4) — 동시폭기로 이미 평형 근처")
-        send_motor(ser, 4, 'm4f:60')
+        _move_liquid(ser, 4, 'm4f:60', 'REF', 'TANK')
 
         # ── [B] 폭기 ON (측정챔버 ref + 5L 위즈수조 동시) — ref 평탄까지 측정 ──
         #    ref 는 5L서 내내 co-aeration 됐으므로 평형 근처서 시작 → 빨리 끝남.
@@ -764,11 +816,11 @@ def run_measurement(ser, tank_dkh=None):
         try:
             send(ser, 'ton', stop_pattern='수조ON')
             print("\n[정리] 참조수 측정챔버 → 5L 위즈수조 회수 (m4 역방향)")
-            send_motor(ser, 4, 'm4b:70')   # 5L↔측정챔버 호스가 길어 역방향 +10(60→70)으로 완전 회수
+            _move_liquid(ser, 4, 'm4b:70', 'EMPTY', 'TANK')   # 5L↔측정챔버 호스가 길어 역방향 +10(60→70)으로 완전 회수
             print("\n[정리] 파킹된 수조수 홀딩 → 본수조 마무리 배출 (m1 역방향)")
-            send_motor(ser, 1, 'm1b:82')
+            _move_liquid(ser, 1, 'm1b:82', 'EMPTY', 'EMPTY')
             print("\n[정리] KCl 공급 (프로브 소크)")
-            kcl_lines = send_motor(ser, 3, 'm3f:60')
+            kcl_lines = _move_liquid(ser, 3, 'm3f:60', 'KCL', 'EMPTY')
             send(ser, 'airoff', stop_pattern='OFF')
             if not _motor_ok(kcl_lines, 3):
                 # KCl 소크가 조용히 실패(타임아웃/무응답)하면 측정값이 멀쩡해도 에러로 본다

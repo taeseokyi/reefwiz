@@ -9,7 +9,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 21 시나리오 / 104 검증:
+총 22 시나리오 / 117 검증:
   ── 정상/회복 10 시나리오(57 검증) ──
     [1] 클린 calkh           (9) 전체 흐름·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
@@ -21,7 +21,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [14] calref 미평탄       (4) 상한 도달 시 수조 dKH 음수(-입력값) dkh.dat·reefCore 둘 다 발행
     [19] 링크 사망→복귀      (5) 평탄 phase 중 완전 두절→재기동→끈질긴 대기가 재접속·측정 재개·완주
     [20] 무딘 S커브 MIN_N    (8) 저진폭 lag false lock 재현(a) + FLAT_MIN_N_TANK=20 시 참평형 도달·ref 미적용(b)
-  ── 예외 11 시나리오(47 검증) ──
+  ── 예외 12 시나리오(60 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
     [7] 모터 완료 누락(막힘) (3) 재시도(정지+재송신) 소진 후 미완료 처리
@@ -34,6 +34,8 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [18] 호스트 구제          (4) calkh 직전 완전 두절→시작캐시 refKH 로 음수 dKH 기록·발행(0.0 래치 방지)
     [21] 비상정리 전제조건    (7) 링크 사망 중 airoff·ton 실패→(a)회복 대기 후 전제조건부터 재시도·모터는
                                   그 뒤에만·KCl 복원 (b)끝내 실패 시 모터 생략+경고(거짓 성공 로그 방지)
+    [22] 비상정리 진행 지점   (13) 액체 위치(_liquid) 판단 선행→(a)시작 전(챔버=KCl)=모터 0회
+                                  (b)ref 단계=m4b 5L 회수 레시피(m2b 배출 금지) (c)이송 도중=UNKNOWN 동결+경고
 
 ※ 테스트는 import 한 모듈의 타이밍 상수만 메모리에서 패치(빠른 실행). 소스 파일의 실전 상수는
   불변 → 배포본 정상 동작.
@@ -589,6 +591,96 @@ def scenario_cleanup_precond():
     check("(b) KCl 미복원 경고 출력", '★★[경고]' in out)
 
 
+def scenario_cleanup_state():
+    print("\n[22] 비상정리 진행 지점 판단 — (a) 시작 전=모터 0회 (b) ref 단계=m4b 회수 (c) 이송 도중=동결 (2026-07-10)")
+    # 사용자 원칙: 복원은 "진행이 어디까지 갔나" 판단이 선행. 위치를 모르면 자동 정리(모터)보다
+    # 동결이 낫다. 기존 고정 레시피(m2b→m1b→m3f)는 챔버=tank수만 가정 — 시작 전 에러면 KCl 을
+    # 본수조로 배출, ref 단계 에러면 참조수를 소실(5L 순환회수 위반)하는 결함이 있었다.
+
+    # (a) 준비 이전(첫 airoff 에서 두절) — 챔버=직전 런의 KCl 소크 상태 = 이미 목표 상태 → 모터 0회.
+    sim = FirmwareSim()
+    sim.drops = [{'pat': 'airoff', 'nth': 1, 'when': 'before', 'kill': True}]
+    port = sim.start(); time.sleep(0.1)
+    ser = open_ser(port); time.sleep(0.1); ser.reset_input_buffer()
+    buf = io.StringIO(); raised = None
+    try:
+        with contextlib.redirect_stdout(buf):
+            mk.run_measurement(ser)
+    except Exception as e:
+        raised = e
+    finally:
+        try: ser.close()
+        except Exception: pass
+        sim.stop()
+    out = buf.getvalue()
+    check("(a) 진행 지점 판단 로그(챔버=KCL)", '챔버=KCL' in out)
+    check("(a) 모터 조치 불필요 로그", '모터 조치 불필요' in out)
+    check("(a) 모터 명령 송신 0회", not any(c.startswith('m') and ':' in c for c in sim.received),
+          f"received={sim.received}")
+    check("(a) KCl 경고 없음(소크 상태 유지)", '★★[경고]' not in out)
+
+    # (b) ref 평탄 phase 서 완전 두절 → phase 마감 → 비상정리 회복 대기 중 링크 복귀
+    #     → 챔버=REF 판단 → m4b(5L 회수) 레시피(m2b 아님) → m1b → m3f KCl 복원.
+    pm_bak, cr_bak = mk.PHASE_MAX_SECS, mk.CLEANUP_RECOVERY_SECS
+    mk.PHASE_MAX_SECS = 2
+    mk.CLEANUP_RECOVERY_SECS = 25
+    sim = FirmwareSim()
+    sim.drops = [{'pat': 'ref', 'nth': 1, 'when': 'before', 'kill': True}]
+    port = sim.start(); time.sleep(0.1)
+    ser = open_ser(port); time.sleep(0.1); ser.reset_input_buffer()
+    sim2 = FirmwareSim(port=port)
+    timer = threading.Timer(12.0, sim2.start)   # 전제조건 1차 실패 뒤 '링크 회복' 모사
+    timer.start()
+    buf = io.StringIO(); raised = None
+    try:
+        with contextlib.redirect_stdout(buf):
+            mk.run_measurement(ser)
+    except Exception as e:
+        raised = e
+    finally:
+        timer.cancel()
+        try: ser.close()
+        except Exception: pass
+        sim.stop(); sim2.stop()
+        mk.PHASE_MAX_SECS, mk.CLEANUP_RECOVERY_SECS = pm_bak, cr_bak
+    out = buf.getvalue()
+    rcv = sim2.received
+    def idx(cmd):
+        return rcv.index(cmd) if cmd in rcv else -1
+    check("(b) 진행 지점 판단 로그(챔버=REF)", '챔버=REF' in out)
+    check("(b) 참조수 회수 레시피 순서(ton < m4b:70 < m1b:82 < m3f:60)",
+          0 <= idx('ton') < idx('m4b:70') < idx('m1b:82') < idx('m3f:60'), f"rcv={rcv}")
+    check("(b) m2b 미사용(참조수를 본수조로 배출 안 함)", 'm2b:68' not in rcv, f"rcv={rcv}")
+    check("(b) KCl 소크 복원(경고 없음)", 'm3f:60' in rcv and '★★[경고]' not in out)
+
+    # (c) 이송(m1f) 도중 완전 두절 — 액체 위치 불명(UNKNOWN) → 자동 정리 생략(동결)+경고.
+    sim = FirmwareSim()
+    sim.drops = [{'pat': 'm1f', 'nth': 1, 'when': 'before', 'kill': True}]
+    port = sim.start(); time.sleep(0.1)
+    ser = open_ser(port); time.sleep(0.1); ser.reset_input_buffer()
+    buf = io.StringIO(); raised = None
+    try:
+        with contextlib.redirect_stdout(buf):
+            mk.run_measurement(ser)
+    except Exception as e:
+        raised = e
+    finally:
+        try: ser.close()
+        except Exception: pass
+        sim.stop()
+    out = buf.getvalue()
+    cleanup_out = out.split('[비상정리]', 1)[-1]
+    check("(c) 위치 불명 동결 로그", '액체 위치 불명' in out)
+    check("(c) UNKNOWN 상태 유지", mk._liquid['chamber'] == 'UNKNOWN',
+          f"_liquid={mk._liquid}")
+    check("(c) 전제조건 시도조차 안 함(즉시 동결)", '전제조건' not in cleanup_out,
+          f"cleanup_out={cleanup_out[-200:]}")
+    check("(c) 비상정리 구간 모터 송신 없음", '→ m2b:68' not in cleanup_out
+          and '→ m1b:82' not in cleanup_out and '→ m3f:60' not in cleanup_out,
+          f"cleanup_out={cleanup_out[-300:]}")
+    check("(c) KCl 미복원 경고 출력", '★★[경고]' in out)
+
+
 def scenario_calkh_error_publish():
     print("\n[15] calkh 측정 실패(통신 두절) → dkh.dat·reefCore 둘 다 0(에러) 발행")
     # 첫 tank 직전 서버 kill → run_measurement 예외 → main 이 0.0 행 기록 + 0.0 발행.
@@ -647,6 +739,7 @@ def main():
     scenario_calref_error_publish()
     scenario_latch_consistency()
     scenario_cleanup_precond()
+    scenario_cleanup_state()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
     print("=" * 56)
