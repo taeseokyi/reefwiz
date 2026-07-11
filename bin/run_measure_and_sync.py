@@ -6,7 +6,8 @@ WSL 쪽 sync_dkh_dat.py 를 호출해 dkh.dat·평탄 이력을 저장소에 커
 (push 되면 GitHub Actions 가 렌더링 → Pages 갱신).
 측정과 동기화 사이에 doser_adjust.py 를 매회 실행한다(2026-07-06) — 대시보드에서
 입력한 수동 도징 설정(오버라이드)은 매 측정 후 확인·적용하고, 정기 자동 조정은
-월~금 13시 회차(--slot-adjust)만 한다. 조정 이력(doser_history.json)이 같은
+매일 13시 회차(--slot-adjust)만 한다(2026-07-11 주말 포함 확대 — 토요일 권고 누락을
+버그로 오인한 사례에서 매일로 변경). 조정 이력(doser_history.json)이 같은
 사이클의 동기화로 대시보드에 올라가도록 sync 앞에 둔다. 조정 실패·타임아웃은
 동기화를 막지 않는다.
 
@@ -25,7 +26,7 @@ import sys
 
 MEASURE_SCRIPT = r"C:\dkh\work\measure_kh_once.py"
 ADJUST_SCRIPT = r"C:\dkh\work\doser_adjust.py"
-ADJUST_WEEKDAYS = (0, 1, 2, 3, 4)   # 월~금 — 13시 측정 종료 후 도저 조정(주 5회, 2026-07-06 확대)
+ADJUST_WEEKDAYS = (0, 1, 2, 3, 4, 5, 6)  # 매일 — 13시 측정 종료 후 도저 조정(2026-07-11 주말 확대)
 ADJUST_TIMEOUT_S = 5 * 60
 WSL_EXE = r"C:\Windows\System32\wsl.exe"
 SYNC_CMD = [
@@ -50,7 +51,7 @@ def log(msg):
 
 
 def is_adjust_slot(start):
-    """월~금 13시 측정 회차인가(도저 조정 실행 여부). 시작 시각 기준으로 판정."""
+    """13시 측정 회차인가(도저 조정 실행 여부). 시작 시각 기준으로 판정."""
     return start.weekday() in ADJUST_WEEKDAYS and 12 <= start.hour <= 14
 
 
@@ -66,18 +67,21 @@ def main():
     log(f"측정 종료 exit={measure.returncode} → 동기화 시작")
 
     # 1.5) 도저 — 매 측정 후 실행: 대시보드 수동 설정(오버라이드) 확인은 매회,
-    #      정기 자동 조정은 월~금 13시 회차만(--slot-adjust). sync 앞에 두어 조정
+    #      정기 자동 조정은 매일 13시 회차만(--slot-adjust). sync 앞에 두어 조정
     #      이력이 같은 사이클에 대시보드로 올라가게 한다. 실패해도 sync 를 막지 않는다.
+    slot = is_adjust_slot(start)
     try:
         adj = subprocess.run(
             [sys.executable, ADJUST_SCRIPT]
-            + (["--slot-adjust"] if is_adjust_slot(start) else []),
+            + (["--slot-adjust"] if slot else []),
             cwd=r"C:\dkh\work",
             capture_output=True,
             timeout=ADJUST_TIMEOUT_S,
             creationflags=CREATE_NO_WINDOW,
         )
-        msg = f"도저 확인/조정 종료 exit={adj.returncode} (상세는 doser_adjust.log)"
+        # 슬롯 여부를 로그에 남겨 "권고가 안 올라왔다" 진단 시 스킵/실행을 구분(2026-07-11)
+        msg = (f"도저 확인/조정 종료 exit={adj.returncode} "
+               f"({'정기 권고 슬롯' if slot else '오버라이드 확인만'}, 상세는 doser_adjust.log)")
         if adj.returncode != 0:
             # doser_adjust.log 에 아무 흔적 없이 죽는 경우(2026-07-08 13:41)가 있어
             # 실패 시 자식 출력 꼬리를 여기 남긴다. 자식은 Windows python(로케일 cp949).

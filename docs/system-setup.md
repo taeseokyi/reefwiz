@@ -192,7 +192,7 @@ tank 측정 내내 5L 위즈수조를 *동시 폭기*해 ref 가 5L서 co-aerati
 
 | 스크립트 | 동작 |
 |----------|------|
-| `bin/run_measure_and_sync.py` | **스케줄러 진입점(2026-07-05~)** — 측정 → 도저 조정(매회 오버라이드 확인, 월~금 13시만 자동 권고) → 대시보드 동기화를 연쇄 실행 ([파이프라인](#측정-직후-대시보드-동기화-파이프라인)) |
+| `bin/run_measure_and_sync.py` | **스케줄러 진입점(2026-07-05~)** — 측정 → 도저 조정(매회 오버라이드 확인, 매일 13시만 자동 권고) → 대시보드 동기화를 연쇄 실행 ([파이프라인](#측정-직후-대시보드-동기화-파이프라인)) |
 | `bin/measure_kh_once.py` | **V4** — 1회 측정 후 종료 (래퍼가 호출, 수동 단독 실행도 가능) |
 | `bin/doser_adjust.py` | 올포리프 도저 조정 — 권고 계산(자동 적용 꺼짐)·대시보드 수동/목표 설정 적용 ([사용설명서 §10](user-manual.md#10-도저-자동-조정-올포리프)) |
 | `bin/sync_dkh_dat.py` | dkh.dat·평탄 이력·도저 이력을 저장소에 커밋/push (WSL, 래퍼가 호출) |
@@ -344,7 +344,7 @@ Windows 스케줄러 (05/13/21시)
   └ run_measure_and_sync.py (래퍼, C:\dkh\work)
       ① measure_kh_once.py  — V4 측정 → dkh.dat 기록·reefCore 발행
       ② doser_adjust.py     — 대시보드 수동 도징 설정 확인·적용(매회)
-      │                       + 자동 조정 권고 계산(월~금 13시 회차만)
+      │                       + 자동 조정 권고 계산(매일 13시 회차만)
       ③ wsl.exe → sync_dkh_dat.py — dkh.dat·평탄 이력·도저 이력 커밋/push
           └ GitHub Actions (make_dkh_json.py) → Pages 갱신 (수 분 내)
 ```
