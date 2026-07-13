@@ -7,6 +7,9 @@ dkh.dat 형식(공백 구분, 한 줄에 하나): HH ref_pH tank_pH ref_kh tank_
   - 파일에 날짜가 없다(시각 HH만 기록) → --recent 는 "최근 N건"(회수) 근사다.
   - --dates-from-git: 각 행이 append 된 커밋 시각(git blame)으로 날짜를 복원해
     "date"(YYYY-MM-DD) 필드를 붙인다. git 이력이 없으면 조용히 날짜 없이 동작.
+  - --plateau: dkh_plateau_history.json 의 런과 (date, hh) 로 매칭해 CO₂ 편향 의심
+    필드(co2_suspect)를 행에 주입한다(--dates-from-git 필요 — date 없는 행은 매칭 불가).
+    이력에 없는 행(보관 14일 밖 등)은 필드 자체를 생략 — 소비자(JS)는 falsy=미의심 처리.
 """
 import argparse
 import datetime
@@ -89,6 +92,38 @@ def git_line_dates(dat_path):
     return [d.isoformat() for d in dates]
 
 
+def plateau_flags(plateau_path):
+    """dkh_plateau_history.json → {(date, hh): co2_suspect} 매핑. 실패 시 None.
+
+    run_started("2026-07-13 05:00:02")의 날짜·시가 곧 측정 시작 시각이라 행의
+    (복원 date, HH)와 1:1 대응한다(git_line_dates 의 자정 넘김 보정이 커밋 지연을
+    이미 흡수). 같은 키가 중복되면 뒤(최신) 런이 이긴다.
+    """
+    try:
+        with open(plateau_path) as f:
+            runs = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"경고: plateau 이력 읽기 실패 — 플래그 없이 진행 ({e})", file=sys.stderr)
+        return None
+    if not isinstance(runs, list):
+        return None
+    flags = {}
+    for run in runs:
+        rs = run.get("run_started") or ""
+        try:
+            key = (rs[:10], int(rs[11:13]))
+        except (ValueError, IndexError):
+            continue
+        if "co2_suspect" in run:
+            suspect = bool(run["co2_suspect"])
+        else:
+            # 백필(sync_dkh_dat.py) 전 과도기 — 판정 함수로 즉석 재계산
+            import parse_plateau_log  # bin/ 동봉 모듈(스크립트 디렉토리가 sys.path 에 있음)
+            suspect, _ = parse_plateau_log.classify_co2_suspect(run)
+        flags[key] = suspect
+    return flags
+
+
 def row_json(r):
     out = {k: v for k, v in r.items() if k != "line"}
     return out
@@ -118,6 +153,8 @@ if __name__ == "__main__":
                      help="series-json에 담을 최근 N건(옵션) — json(최신값)은 항상 전체 마지막 행 기준")
     ap.add_argument("--dates-from-git", action="store_true",
                      help="git blame 커밋 시각으로 각 행의 날짜를 복원해 date 필드 추가")
+    ap.add_argument("--plateau", default=None,
+                     help="dkh_plateau_history.json 경로 — (date,hh) 매칭으로 co2_suspect 주입")
     args = ap.parse_args()
 
     rows = load(args.dat_file)
@@ -130,6 +167,14 @@ if __name__ == "__main__":
             for r in rows:
                 if r["line"] <= len(dates):
                     r["date"] = dates[r["line"] - 1]
+
+    if args.plateau:
+        flags = plateau_flags(args.plateau)
+        if flags:
+            for r in rows:
+                key = (r.get("date"), r["hh"])
+                if key in flags:
+                    r["co2_suspect"] = flags[key]
 
     if args.json:
         write_latest_json(rows, args.json)

@@ -17,6 +17,13 @@
   재개하려면 AUTO_APPLY=True 로 바꾸고 배포본 재복사.
 - 안전 레일: 유효 측정 부족 시 중단 / 1회 조정 스텝 ±30% / lrt 절대범위 2000~24000ms
   (사용자 지정 상한 3배=원액 18mL/일) / 변화 200ms 미만은 스킵(데드밴드·EEPROM 마모).
+- ★CO₂ 편향 의심 제외(2026-07-13): 새벽 실내 CO₂ 축적으로 dKH가 −0.07~−0.24 낮게
+  나오는 측정(판정=ref 곡선 형태, parse_plateau_log.classify_co2_suspect 단일 소스)을
+  추세·수준 계산에서 제외한다. 플래그는 GitHub 의 docs/dkh_series.json(co2_suspect
+  필드)에서 읽고, 날짜 없는 로컬 dkh.dat 과는 값 시퀀스 접미(suffix) 정렬로 대응
+  — 실행 시점(측정 직후, sync 전)에 원격에 이번 회차 행이 없는 게 정상이라 오프셋
+  k를 0부터 늘려가며 맞춘다. 조회/정렬 실패 시 제외 없이 종전 계산으로 폴백(권고
+  전용이라 안전), 제외가 창의 다수(>CO2_EXCLUDE_MAX)면 판정기 오작동 의심으로 중단.
 - 기록: C:\\dkh\\work\\doser_history.json (sync가 docs/로 복사→대시보드 카드),
   상세 로그 C:\\dkh\\doser_adjust.log.
 - ★목표 dKH 설정(2026-07-06): 대시보드가 docs/doser_config.json 에 {target_dkh} 를
@@ -55,6 +62,8 @@ OVERRIDE_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
                 "docs/doser_override.json?ref=master")
 CONFIG_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
               "docs/doser_config.json?ref=master")
+SERIES_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
+              "docs/dkh_series.json?ref=master")
 
 PORT = "COM12"
 BAUD = 9600
@@ -77,6 +86,10 @@ ROWS = 21                 # 최근 21행 ≈ 7일(하루 3회)
 MIN_VALID = 10
 VALID_LO, VALID_HI = 4.0, 12.0
 ROW_DAYS = 8.0 / 24.0     # 행 간격 8시간 가정
+
+CO2_EXCLUDE_MAX = 9       # 창 안 CO₂ 제외가 이보다 많으면 판정기 오작동 의심 → 중단
+CO2_ALIGN_MIN_OVERLAP = 3 # 접미 정렬로 인정할 최소 겹침 행 수
+CO2_ALIGN_MAX_LAG = 6     # 원격에 아직 없는 최신 로컬 행 수 허용치(보통 1=방금 측정분)
 
 ADVISORY_RUNS = 2         # 계산 성공 기준 처음 2회는 권고만(적용 안 함)
 AUTO_APPLY = False        # ★False=자동 적용 영구 꺼짐, 계속 권고만(사용자 지시 2026-07-06).
@@ -107,21 +120,85 @@ def ml_day_to_lrt(ml_day):
     return ml_day / (DOSES_PER_DAY * DILUTION) * MS_PER_ML
 
 
-def read_recent_kh(path=None, rows=ROWS):
-    """dkh.dat 마지막 rows행에서 (행위치, tank_kh) 유효값만. 0.0=에러, 음수=미평탄 제외."""
+def read_dat_lines(path=None):
     if path is None:
         path = DAT_FILE  # 기본 인자에 박으면 테스트에서 모듈 변수 교체가 안 먹음
     with open(path, encoding="utf-8", errors="replace") as f:
-        lines = [ln.split() for ln in f.read().splitlines() if ln.strip()]
-    pts = []
+        return [ln.split() for ln in f.read().splitlines() if ln.strip()]
+
+
+def read_recent_kh(path=None, rows=ROWS, co2_excluded=None):
+    """dkh.dat 마지막 rows행에서 (행위치, tank_kh) 유효값만. 0.0=에러, 음수=미평탄 제외.
+
+    co2_excluded(전체 파일 기준 줄 인덱스 집합, fetch_co2_excluded 반환)에 든 행은
+    CO₂ 편향 의심으로 추가 제외한다. 행위치 인덱스 i 는 제외돼도 건너뛰기만 하므로
+    Theil-Sen 의 8h 간격 시간축이 그대로 유지된다(기존 유효성 탈락과 같은 방식).
+    반환: (pts, 창 안에서 CO₂ 로 제외된 행 수)
+    """
+    lines = read_dat_lines(path)
+    base = len(lines) - min(rows, len(lines))
+    pts, n_co2 = [], 0
     for i, parts in enumerate(lines[-rows:]):
         try:
             kh = float(parts[4])
         except (IndexError, ValueError):
             continue
-        if VALID_LO < kh < VALID_HI:
-            pts.append((i, kh))
-    return pts
+        if not (VALID_LO < kh < VALID_HI):
+            continue
+        if co2_excluded and (base + i) in co2_excluded:
+            n_co2 += 1
+            continue
+        pts.append((i, kh))
+    return pts, n_co2
+
+
+def _series_key(hh, tank_kh, temp):
+    """정렬 비교 키 — series 는 tank_kh 를 abs() 로 내보내므로 로컬도 abs 로 맞춘다."""
+    return (int(hh), round(abs(float(tank_kh)), 3), round(float(temp), 1))
+
+
+def fetch_co2_excluded(lines, series=None):
+    """원격 dkh_series.json 과 접미 정렬로 CO₂ 편향 의심 행의 줄 인덱스 집합을 얻는다.
+
+    로컬 dkh.dat 에는 날짜가 없어 원격 series(날짜·co2_suspect 보유)와 키 매칭이
+    불가 → (hh, |tank_kh|, temp) 값 시퀀스의 접미 일치로 정렬한다. 실행 시점(측정
+    직후, sync 전)에 원격에는 이번 회차 행이 아직 없으므로 오프셋 k(원격에 없는
+    최신 로컬 행 수)를 0부터 CO2_ALIGN_MAX_LAG 까지 늘려가며 최소 k 를 채택하고,
+    원격에 없는 최신 k행은 미의심 취급. 실패(조회 불가/정렬 불일치) 시 None —
+    호출부는 제외 없이 종전 계산으로 폴백한다.
+    series 인자는 테스트용 주입(None 이면 GitHub API 조회).
+    """
+    if series is None:
+        series = fetch_repo_json(SERIES_URL, "CO₂플래그")
+    if not isinstance(series, list) or not series:
+        return None
+    try:
+        s_keys = [_series_key(r["hh"], r["tank_kh"], r["temp"]) for r in series]
+    except (KeyError, TypeError, ValueError):
+        log("[CO₂플래그] series 형식 오류 — 제외 없이 계산")
+        return None
+
+    local = []  # (줄 인덱스, 비교 키) — series 와 같은 유효 규칙(전부 0=에러 행 제외)
+    for i, parts in enumerate(lines):
+        try:
+            ref_kh, tank_kh = float(parts[3]), float(parts[4])
+            key = _series_key(parts[0], tank_kh, parts[5])
+        except (IndexError, ValueError):
+            continue
+        if ref_kh == 0.0 and tank_kh == 0.0:
+            continue
+        local.append((i, key))
+
+    for k in range(0, CO2_ALIGN_MAX_LAG + 1):
+        cand = local[:len(local) - k] if k else local
+        t = min(len(cand), len(s_keys))
+        if t < CO2_ALIGN_MIN_OVERLAP:
+            break
+        if [key for _, key in cand[-t:]] == s_keys[-t:]:
+            return {idx for (idx, _), row in zip(cand[-t:], series[-t:])
+                    if row.get("co2_suspect")}
+    log("[CO₂플래그] 원격 series 와 정렬 실패 — 제외 없이 계산")
+    return None
 
 
 def theil_sen_per_day(pts):
@@ -376,17 +453,20 @@ def main():
         return
 
     if "--dry-run" in sys.argv:
-        pts = read_recent_kh()
+        co2 = fetch_co2_excluded(read_dat_lines())  # 조회 실패=None → 제외 없이 폴백
+        pts, n_co2 = read_recent_kh(co2_excluded=co2)
+        co2_txt = ("CO₂ 플래그 조회 실패 — 제외 없음" if co2 is None
+                   else f"CO₂ 의심 {n_co2}점 제외")
         if len(pts) < MIN_VALID:
-            print(f"유효 측정 부족: {len(pts)}/{MIN_VALID}")
+            print(f"유효 측정 부족: {len(pts)}/{MIN_VALID} | {co2_txt}")
             return
         level = statistics.median(kh for _, kh in pts[-3:])
         slope = theil_sen_per_day(pts)
         cur_lrt = int(sys.argv[sys.argv.index("--lrt") + 1]) if "--lrt" in sys.argv else 8000
         target = fetch_target()  # 무접속=도저 미접속. 네트워크 실패 시 기본값이라 오프라인 OK
         r = compute(level, slope, cur_lrt, target)
-        print(f"유효 {len(pts)}점 | 수준 {level:.3f} | 목표 {target} | 추세 {slope:+.3f}/일 "
-              f"| 오차 {r['error']:+.3f}")
+        print(f"유효 {len(pts)}점 | {co2_txt} | 수준 {level:.3f} | 목표 {target} "
+              f"| 추세 {slope:+.3f}/일 | 오차 {r['error']:+.3f}")
         print(f"목표 접근속도 {r['desired_rate']:+.4f}/일 → 필요 Δ {r['delta_rate']:+.4f}/일 "
               f"= 원액 {r['delta_ml']:+.1f}mL/일")
         print(f"lrt {cur_lrt} → {r['new_lrt']}ms "
@@ -405,9 +485,16 @@ def main():
     if "--slot-adjust" not in sys.argv:
         return
 
-    pts = read_recent_kh()
+    co2 = fetch_co2_excluded(read_dat_lines())
+    pts, n_co2 = read_recent_kh(co2_excluded=co2)
+    co2_note = ("CO₂ 플래그 조회 실패 — 제외 없이 계산" if co2 is None
+                else f"CO₂ 의심 {n_co2}점 제외" if n_co2 else "")
+    if n_co2 > CO2_EXCLUDE_MAX:
+        record_abort(f"CO₂ 제외 과다({n_co2}점>{CO2_EXCLUDE_MAX}) — 판정기 점검 필요")
+        return
     if len(pts) < MIN_VALID:
-        record_abort(f"유효 측정 부족({len(pts)}/{MIN_VALID})")
+        record_abort(f"유효 측정 부족({len(pts)}/{MIN_VALID})"
+                     + (f" | {co2_note}" if co2_note else ""))
         return
 
     level = statistics.median(kh for _, kh in pts[-3:])
@@ -431,6 +518,8 @@ def main():
                 or computed_run_count(load_history()) < ADVISORY_RUNS else "auto")
         applied = False
         note = ", ".join(r["notes"])
+        if co2_note:
+            note = (note + " | " if note else "") + co2_note
 
         if mode == "auto" and r["new_lrt"] != cur_lrt:
             applied = apply_lrt(ser, r["new_lrt"], cur_lrt)
@@ -452,6 +541,7 @@ def main():
         "ml_day_old": round(lrt_to_ml_day(cur_lrt), 2),
         "ml_day_new": round(lrt_to_ml_day(r["new_lrt"]), 2),
         "applied": applied,
+        "excluded_co2": n_co2,
         "note": note,
     }
     append_history(entry)

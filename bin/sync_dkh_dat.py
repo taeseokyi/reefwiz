@@ -96,6 +96,15 @@ def sync_plateau():
     if not isinstance(history, list):
         history = []
 
+    # CO₂ 편향 의심 필드 lazy 백필(2026-07-13 도입) — 필드가 없는 과거 항목에만
+    # 판정을 소급 적용한다. 도입 후 첫 sync 한 번으로 보관분 전체가 필드를 갖게 돼
+    # 소비자(대시보드·make_dkh_json)가 규칙을 중복 구현할 필요가 없어진다.
+    backfilled = False
+    for r in history:
+        if "co2_suspect" not in r:
+            r["co2_suspect"], r["ref_net_mph"] = parse_plateau_log.classify_co2_suspect(r)
+            backfilled = True
+
     # 같은 실행(run_started)은 교체(진행 중 스냅샷 → 완료본 갱신), 새 실행은 뒤에 추가.
     # run_started 단독 dedup으로 스킵하면 안 되는 이유는 parse_plateau_log.py 참조
     # (긴 측정의 첫 스냅샷이 영구 고정되는 버그, 2026-07-01).
@@ -103,7 +112,7 @@ def sync_plateau():
                 if r.get("run_started") == result["run_started"]), None)
     if idx is None:
         history.append(result)
-    elif history[idx] == result:
+    elif history[idx] == result and not backfilled:
         return False
     else:
         history[idx] = result

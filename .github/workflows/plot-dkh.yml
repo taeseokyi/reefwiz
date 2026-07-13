@@ -29,7 +29,8 @@ jobs:
       - name: 최신값·시리즈 JSON 생성
         run: |
           # 최근 2주(하루 3회 기준 42건) — 날짜는 각 행의 동기화 커밋 시각으로 복원
-          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent 42 --dates-from-git
+          # --plateau: 평탄 이력의 CO₂ 편향 의심 판정(co2_suspect)을 (date,hh) 매칭으로 주입
+          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent 42 --dates-from-git --plateau docs/dkh_plateau_history.json
 
       - name: 변경분 커밋
         run: |
