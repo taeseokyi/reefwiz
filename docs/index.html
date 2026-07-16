@@ -707,6 +707,12 @@
         manual: ["수동", "manual"], abort: ["중단", "abort"],
       };
       const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&#34;");
+      // 중단(abort) 행의 note 는 예외 덤프 원문이라 셀에 그대로 넣으면 표가 깨진다.
+      // 셀에는 첫 콜론 앞 사유("COM12 연결 실패" 등)만 짧게, 원문은 행 툴팁(title)으로.
+      const abortBrief = (note) => {
+        const head = String(note || "").split(":")[0].trim();
+        return (head.length > 24 ? head.slice(0, 24) + "…" : head) || "실패";
+      };
       document.getElementById("doserRows").innerHTML = hist
         .slice(-10)
         .reverse()
@@ -714,7 +720,7 @@
           const b = badge[e.mode] || ["?", "abort"];
           const dose =
             e.mode === "abort"
-              ? esc(e.note) || "—"
+              ? esc(abortBrief(e.note)) + " — 변경 없음"
               : e.ml_day_old.toFixed(1) + " → " + e.ml_day_new.toFixed(1) +
                 (e.mode === "advisory" ? " (미적용)" : e.applied ? "" : " (실패)");
           return (
