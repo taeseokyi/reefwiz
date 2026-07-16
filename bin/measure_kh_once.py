@@ -87,7 +87,7 @@ import os
 import argparse
 from datetime import datetime
 
-PORT     = 'COM9'
+PORT     = 'COM14'   # 2026-07-16 윈도우 업데이트로 BT 포트 재배치(COM9→COM14)
 BAUD     = 9600
 
 # ── 평형(평탄) 판정 — measure_until_flat (정수 milli-pH 윈도우; float 비교 지터 회피) ──

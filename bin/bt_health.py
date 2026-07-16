@@ -18,7 +18,7 @@ bt_health.py — HC-06 블루투스 SPP 링크 건강 모니터 (COM9)
 import sys, time, argparse, datetime
 import serial
 
-PORT     = 'COM9'
+PORT     = 'COM14'   # 2026-07-16 윈도우 업데이트로 BT 포트 재배치(COM9→COM14)
 BAUD     = 9600
 PING_CMD = 'status'          # 부작용 없음: 상태만 출력, 액추에이터/샘플링 없음
 STOP     = '============'    # printStatus() 종단 마커
