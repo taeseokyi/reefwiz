@@ -1,0 +1,7 @@
+{
+  "_comment": "AquaWiz BT 포트 단일 설정. 포트가 바뀌면 여기(실전은 C:\\dkh\\bt_config.json)만 수정. mac/desc는 참고·확인용. 이 bin/ 사본은 저장소 기준값/시뮬레이터용.",
+  "devices": {
+    "measure": { "port": "COM10", "mac": "98DA600FC57A", "desc": "측정기 HC-06 (measure_kh_once/bt_health)" },
+    "doser":   { "port": "COM11", "mac": "98DA60056895", "desc": "도저 ca_reactor (doser_adjust/set_time)" }
+  }
+}

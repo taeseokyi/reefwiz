@@ -4,7 +4,7 @@
 동작 한 줄 요약: 최근 7일 dKH 수준·추세를 보고, 목표(기본 7.2, 대시보드에서 변경 가능)에
 일주일에 걸쳐 접근하도록 왼쪽 펌프(AFR 50% 용액)의 1회 가동시간(lrt, ms)을 소폭 조정한다.
 
-- 도저 펌웨어 = ca_reactor_output_controller_v8 (COM15, 9600, LF만 — CR 붙으면 미실행).
+- 도저 펌웨어 = ca_reactor_output_controller_v8 (포트=bt_config.json 의 doser, 9600, LF만 — CR 붙으면 미실행).
   `lrt <ms>` 는 EEPROM 에 저장되지만 **동작 타이머 인터벌은 `refresh all` 을 보내야
   반영된다**(사용자 확인 2026-07-06; 펌웨어상 setInterval 이 refresh_all_timers() 에만
   있음). 따라서 적용 = `lrt` 전송→에코 검증→`refresh all`→ack 확인 순서. refresh 는
@@ -65,7 +65,9 @@ CONFIG_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
 SERIES_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
               "docs/dkh_series.json?ref=master")
 
-PORT = "COM15"  # 2026-07-16 윈도우 업데이트로 BT 포트 재배치(COM12→COM15)
+from bt_config import get_port
+
+PORT = get_port('doser')  # BT 포트는 bt_config.json 단일 설정에서 로드(포트 바뀌면 설정만 수정)
 BAUD = 9600
 
 TARGET_DKH = 7.2          # 기본 목표 (AquaWiz 측정 기준, 편향 보정 없음) — doser_config.json 이 우선

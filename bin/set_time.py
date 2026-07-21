@@ -6,13 +6,18 @@ AquaWiz 컨트롤러 시계 동기화 (pyserial 직접 전송)
 지정한 시리얼 포트로 'set time HH:mm:ss' 를 보내고 응답을 로그에 남긴다.
 
 사용법:
-  python set_time.py COM9          # 포트 직접 지정
+  python set_time.py doser         # ★장치 이름 → bt_config.json 에서 포트 자동 해석(권장, 스케줄러용)
+  python set_time.py measure       # (측정기도 이름으로 지정 가능)
+  python set_time.py COM9          # 포트 직접 지정(하위호환)
   python set_time.py 9             # 숫자만 주면 COM9 로 해석
-  python set_time.py COM9 115200   # baud 지정 (기본 9600)
+  python set_time.py doser 115200  # baud 지정 (기본 9600)
+
+★포트가 바뀌면 이 인자를 고치지 말고 bt_config.json 만 고친다(단일 설정, [[bt_config]]).
+스케줄러 작업 인자를 'doser' 로 두면 이후 포트 변경 시 작업 재정의(관리자)가 영영 불필요.
 
 시리얼 규약: 9600 baud, 연결 후 2초 대기 + 입력버퍼 비우기.
-줄바꿈은 LF('\\n')만 — COM10/COM12 펌웨어는 '\\r'가 붙으면 명령을 실행하지 않고
-echo만 한다(아두이노 시리얼모니터 "새 줄" 설정과 동일). measure_kh의 COM14와 다름.
+줄바꿈은 LF('\\n')만 — 도저(ca_reactor) 펌웨어는 '\\r'가 붙으면 명령을 실행하지 않고
+echo만 한다(아두이노 시리얼모니터 "새 줄" 설정과 동일). measure_kh 포트와 규약 다름.
 """
 
 import os
@@ -40,6 +45,9 @@ def log(msg):
 
 def norm_port(arg):
     arg = arg.strip()
+    if arg.lower() in ("measure", "doser"):   # 장치 이름 → bt_config.json 에서 포트 해석
+        from bt_config import get_port
+        return get_port(arg.lower())
     return f"COM{arg}" if arg.isdigit() else arg
 
 

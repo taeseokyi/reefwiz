@@ -87,7 +87,9 @@ import os
 import argparse
 from datetime import datetime
 
-PORT     = 'COM14'   # 2026-07-16 윈도우 업데이트로 BT 포트 재배치(COM9→COM14)
+from bt_config import get_port
+
+PORT     = get_port('measure')   # BT 포트는 bt_config.json 단일 설정에서 로드(포트 바뀌면 설정만 수정). argv[1]로 오버라이드 가능
 BAUD     = 9600
 
 # ── 평형(평탄) 판정 — measure_until_flat (정수 milli-pH 윈도우; float 비교 지터 회피) ──

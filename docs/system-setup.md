@@ -236,12 +236,12 @@ tank 측정 내내 5L 위즈수조를 *동시 폭기*해 ref 가 5L서 co-aerati
 
 **동작:** 준비 → **[A] tank·ref 동시 폭기 + tank 평탄까지** → 전이 → **[B] ref 평탄까지** → `calkh` → 정리 후 `airoff`(KCl 소크)로 종료. 평형까지 적응하므로 1회 소요는 가변이며(방 CO₂·시작 격차 의존) **대략 35~50분**, phase 상한(각 7200s=2h, 두 phase 합 최대 4h = 측정 갭 8h의 절반)에 걸리면 더 길어질 수 있습니다.
 
-**포트 지정:** 첫 번째 명령행 인자로 포트를 넘길 수 있고, 없으면 스크립트 내 `PORT` 상수(현재 `COM9`)를 씁니다.
+**포트 지정:** 첫 번째 명령행 인자로 포트를 넘길 수 있고, 없으면 **단일 설정 파일 `bt_config.json`** 에서 측정기 포트를 읽습니다(아래 [BT 포트 설정](#bt-포트-설정--단일-설정-파일-bt_configjson) 참조). 포트가 바뀌어도 소스는 고치지 않습니다.
 
 **모드:** 인자가 없으면 `calkh`(수조 dKH 측정 → `dkh.dat` 기록). `--setref <수조실측dKH>` 를 주면 `calref`(참조수 dKH 역산·EEPROM 저장, `dkh.dat` 기록 안 함) — 자세한 내용은 [사용설명서 §3.2](user-manual.md#32-자동-측정-pc-연동)를 참조하세요.
 
 ```bash
-# 콘솔에서 출력을 보며 실행 (포트 = 스크립트 기본값 COM9)
+# 콘솔에서 출력을 보며 실행 (포트 = bt_config.json 의 measure)
 python measure_kh_once.py
 
 # 포트 직접 지정
@@ -273,9 +273,41 @@ pythonw measure_kh_once.py
 & C:\dkh\python313\pythonw.exe -X utf8 C:\dkh\work\measure_kh_once.py
 ```
 
-> - **포트(COM9)는 블루투스 페어링에 묶입니다.** 평소 유지되지만 장치 삭제 후 재페어링하면 번호가 바뀌므로, 그때 실제 포트를 인자로 넘기거나 `PORT` 상수를 수정합니다.
+> - **COM 포트는 블루투스 페어링에 묶입니다.** 평소 유지되지만 재페어링·동글 교체·윈도우 업데이트 재열거로 번호가 바뀝니다. 그때는 소스가 아니라 **`bt_config.json` 한 곳만** 고칩니다([BT 포트 설정](#bt-포트-설정--단일-설정-파일-bt_configjson)).
 > - 측정 포트는 스케줄러 작업과 공유하므로, **정시 측정(05/13/21시)이 진행 중일 때 수동 실행하면 시리얼 충돌**이 납니다.
 > - `pythonw`는 `sys.stdout`이 `None`이라, 스크립트가 모든 출력을 `C:\dkh\measure_kh.log`로 보냅니다(1MB 초과 시 새로 시작).
+
+### BT 포트 설정 — 단일 설정 파일 (`bt_config.json`)
+
+블루투스 COM 포트는 **재페어링·USB 동글 교체·윈도우 업데이트 재열거**로 수시로 바뀝니다. 예전에는 그때마다 `measure_kh_once.py`·`doser_adjust.py`·`bt_health.py`의 `PORT` 상수와 스케줄러 작업 인자를 일일이 고쳤지만(누락·불일치 위험), **2026-07-21부터 설정 파일 한 곳만 고치면 모두 반영**됩니다.
+
+**설정 파일:** `C:\dkh\bt_config.json` (실전 위치 — 코드 배포 `cp bin→work`로 안 덮이도록 일부러 `work\` 바깥, 로그들과 같은 `C:\dkh\`에 둠). 저장소 `bin/bt_config.json`은 기준값 겸 시뮬레이터(WSL)용 사본.
+
+```json
+{
+  "devices": {
+    "measure": { "port": "COM10", "mac": "98DA600FC57A", "desc": "측정기 HC-06" },
+    "doser":   { "port": "COM11", "mac": "98DA60056895", "desc": "도저 ca_reactor" }
+  }
+}
+```
+
+**포트 바꾸는 법:** `C:\dkh\bt_config.json`의 해당 `port` 값만 새 COM 번호로 수정하면 끝(재부팅·재등록 불필요, 다음 실행부터 반영). `mac`은 참고·확인용입니다.
+
+**새 COM 번호 확인:**
+```powershell
+Get-PnpDevice -Class Ports -PresentOnly | ForEach-Object { "$($_.FriendlyName)  ||  $($_.InstanceId)" }
+# InstanceId 끝의 MAC(예: ...&0&98DA600FC57A_...)으로 어느 기기인지 식별
+```
+
+**공용 로더(`bt_config.py`)** 가 `환경변수 AQUAWIZ_BT_CONFIG → C:\dkh\bt_config.json → 모듈폴더/bt_config.json → 내장 폴백` 순으로 찾습니다. 설정 파일이 없어도 마지막으로 알려진 포트(내장 폴백)로 동작해 측정이 죽지 않습니다. 진단:
+```powershell
+& C:\dkh\python313\python.exe -X utf8 -c "import bt_config; print(bt_config.config_path(), bt_config.all_ports())"
+```
+
+**적용 대상:** `measure_kh_once.py`(measure), `bt_health.py`(measure), `doser_adjust.py`(doser). `set_time.py`는 인자로 `measure`/`doser` 이름을 받으면 설정에서 포트를 해석하므로(예: `set_time.py doser`), **스케줄러 작업 인자를 장치 이름으로 두면 이후 포트가 바뀌어도 작업 재정의(관리자 권한)가 영영 불필요**합니다.
+
+> ⚠️ **CSR USB 동글 사용 시:** 동글이 인식되려면 PC 내장 BT 라디오(인텔 8265 등)를 장치 관리자에서 "사용 안 함" 처리해야 합니다(Windows는 BT 라디오를 한 번에 하나만 활성화 — 안 그러면 동글이 "문제 코드 31"). 이때 내장 BT에 붙어 있던 BT 마우스 등은 동글로 재페어링하거나 USB로 바꿔야 합니다.
 
 ### Windows 작업 스케줄러 등록 (정시 자동 측정)
 
