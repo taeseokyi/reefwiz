@@ -9,8 +9,8 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 22 시나리오 / 117 검증:
-  ── 정상/회복 10 시나리오(57 검증) ──
+총 23 시나리오 / 122 검증:
+  ── 정상/회복 11 시나리오(62 검증) ──
     [1] 클린 calkh           (9) 전체 흐름·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
     [3] 모터 드롭→정지·재송신(5) 재시도 시 mNs 정지 후 재송신(순서 m1f→m1s→m1f)
@@ -21,6 +21,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [14] calref 미평탄       (4) 상한 도달 시 수조 dKH 음수(-입력값) dkh.dat·reefCore 둘 다 발행
     [19] 링크 사망→복귀      (5) 평탄 phase 중 완전 두절→재기동→끈질긴 대기가 재접속·측정 재개·완주
     [20] 무딘 S커브 MIN_N    (8) 저진폭 lag false lock 재현(a) + FLAT_MIN_N_TANK=20 시 참평형 도달·ref 미적용(b)
+    [23] 사전폭기+폭기 토글   (5) 고정 사전폭기(tank1500/ref210s) 수행 + read 직전 airoff·샘플사이 ron 재폭기(2026-07-23)
   ── 예외 12 시나리오(60 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
@@ -56,13 +57,16 @@ mk.KEEPALIVE_SECS  = 0.05
 mk.RECONNECT_BACKOFF = (0.02,)
 mk.RECONNECT_TRIES = 5
 mk.SEND_RETRY_MAX  = 3
-mk.PHASE_MAX_SECS  = 60
+mk.PHASE_MAX_SECS  = 15    # 링크 미복구 시 _wait_link_recovery 가 여기까지 대기 → 테스트 총시간 지배.
+                           #   [19] 3s 복구·[20] 최대 ~31샘플(read 직전 폭기 토글로 샘플당 ↑)을 견디는 최소값.
 mk.MEAS_READ_TIMEOUT = 0.5     # 정상 응답은 즉시라 무관; 예외(무응답) 시 빨리 타임아웃
 mk.LINK_PING_TIMEOUT = 0.3     # ensure_link/reconnect 핑 대기 단축
 mk.FAIL_MAX        = 2          # 예외 시나리오에서 빨리 phase 실패(백스톱 경로 검증)
 mk.LINK_RETRY_INTERVAL = 0.5    # 링크 사망 끈질긴 대기(2026-07-03) 재접속 간격 단축
 mk.CLEANUP_RECOVERY_SECS = 1.0  # 비상정리 전제조건 회복 대기(2026-07-10) 단축 — [21]이 개별 재패치
-mk.FLAT_MIN_N_TANK = 0          # 기존 시나리오는 MIN_N 도입 전 게이트(8회 평탄)를 검증 — [20]이 MIN_N 전용 검증
+mk.FLAT_MIN_N_TANK = 0          # 소스 실전값도 0(2026-07-23 제거, 사전폭기가 초기 lag 흡수) — [20](b)가 20 재패치로 원복 옵션 검증
+mk.PREAERATE_SECS  = {'tank': 0, 'ref': 0}   # 고정 사전폭기(2026-07-23): 시간만 0으로(사전폭기 호출 로직은 [23]이 검증)
+mk.SETTLE_SECS     = 0          # read 직전 정치(2026-07-23) 0으로 — airoff→read→ron 토글 로직은 그대로 돎
 
 EXPECT_TANK_DKH = DEFAULT_REF_DKH * (10 ** (-(REF_PH - TANK_PH)))   # ≈ 8.142
 MOTORS = ['m3b:68', 'm1f:70', 'm2f:60', 'm2b:68', 'm4f:60', 'm4b:70', 'm1b:82', 'm3f:60']
@@ -711,6 +715,31 @@ def scenario_latch_consistency():
         check(f"[{label}] reefCore 0.0 발행", published.get('tank_kh') == 0.0, f"published={published}")
 
 
+def scenario_preaerate_toggle():
+    print("\n[23] 고정 사전폭기 + read 직전 폭기 토글 (2026-07-23)")
+    # 사전폭기 값을 잠깐 실전값으로 되살려 keepalive_sleep 호출 인자를 기록(실제 대기는 0)해 검증.
+    #   run 중 read 직전 airoff / 샘플 사이 ron 이 실제로 오갔는지 sim.received 로 확인.
+    saved_pre, saved_ka = mk.PREAERATE_SECS, mk.keepalive_sleep
+    calls = []
+    def rec_ka(ser, secs):
+        calls.append(secs)
+        return saved_ka(ser, 0)          # 실제 대기는 0(빠르게), 호출 인자만 기록
+    mk.PREAERATE_SECS = {'tank': 1500, 'ref': 210}
+    mk.keepalive_sleep = rec_ka
+    try:
+        result, out, sim = run(lambda ser: mk.run_measurement(ser))
+    finally:
+        mk.PREAERATE_SECS, mk.keepalive_sleep = saved_pre, saved_ka
+    reads = sim.received.count('tank') + sim.received.count('ref')
+    check("tank 사전폭기 1500s 수행", 1500 in calls, f"calls(앞)={calls[:4]}")
+    check("ref 사전폭기 210s 수행", 210 in calls, f"210 in calls={210 in calls}")
+    check("read 직전 airoff 토글(≥ 측정 read 수)", sim.received.count('airoff') >= reads,
+          f"airoff={sim.received.count('airoff')} reads={reads}")
+    check("샘플 사이 ron 재폭기 발생", sim.received.count('ron') >= 2, f"ron={sim.received.count('ron')}")
+    check("결과 양수 dKH(정상 완주)", result is not None and result[3] is not None and result[3] > 0,
+          f"result={result}")
+
+
 def main():
     print("=" * 56)
     print("measure_kh_once 통합 테스트 (firmware_sim)")
@@ -740,6 +769,7 @@ def main():
     scenario_latch_consistency()
     scenario_cleanup_precond()
     scenario_cleanup_state()
+    scenario_preaerate_toggle()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
     print("=" * 56)

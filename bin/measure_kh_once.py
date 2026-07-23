@@ -97,16 +97,25 @@ FLAT_SPAN_N    = 4       # 흔들림(span) 판정 윈도우 — 최근 N개
 FLAT_SPAN_MPH  = 2       # 최근 FLAT_SPAN_N개 max−min ≤ 2 mpH (흔들림 폭). 정수 비교라 float 지터 없음
 FLAT_NET_N     = 8       # ★B1(2026-06-20): 드리프트(net) 판정 룩백 — span보다 긴 창(≈5분)
 FLAT_NET_MPH   = 1       # 최근 FLAT_NET_N개 양끝 |win[-1]-win[0]| ≤ 1 mpH. 짧은 4점은 느린 단조 꼬리서 net=1 위장(20:29 tank 10회 조기 latch) → 8점으로 차단
-FLAT_MIN_N_TANK = 20     # ★MIN_N(2026-07-03): tank 는 유효샘플 20회(≈13분) 전 평탄 잠금 금지.
-                         #   평형 접근은 지수라 기울기∝진폭 — 진폭 작은 날(새벽, 수조수 pCO₂≈헤드스페이스)은
-                         #   S커브가 무뎌져 초기 lag(측정계 과도 포함)가 net8 창 감지한계 밑 → false lock
-                         #   (7/3 05:00 7.509, 참값 ~7.24). 관측 lag ~4-6샘플의 3배 여유.
-                         #   ref 는 능동폭기 앵커(진폭 원래 0, 8~15회 잠금이 정상)라 미적용 — 여기에
-                         #   '하강 관찰 필수' 류 조건을 걸면 ref 가 PHASE_MAX 까지 교착하므로 금지.
-MEAS_INTERVAL  = 30      # 측정 간 간격(초) — 폭기 지속
+FLAT_MIN_N_TANK = 0      # ★MIN_N 제거(2026-07-23): 고정 사전폭기 도입으로 초기 불안정(전극 재평형·
+                         #   열 과도·혼합)이 '측정 전' 사전폭기(미측정)에서 지나감 → 조기 false-lock 근거
+                         #   소멸 → 0(게이트 off, tank 확인창도 net8 로 통일). 새 곡선에서 초기 조기잠금
+                         #   재발 시 20 으로 원복. [이력] 20 은 2026-07-03 무딘 S커브 false lock(7/3 05:00
+                         #   7.509, 참값 ~7.24) 대응으로 도입, 구 스킴(폭기 중 전체측정)서 7/4·7/17 검증됐던
+                         #   안전장치. ref 는 원래 미적용(0) — 능동폭기 앵커라 8~15회 잠금이 정상.
+MEAS_INTERVAL  = 30      # 측정 간 간격(초) — 이 구간엔 폭기 유지(read 직전에만 잠깐 off)
+# ── ★노이즈 차단 측정 + 고정 사전폭기(2026-07-23) ──
+#   기포기 모터 전기 노이즈가 pH read 에 간섭 → 각 read 직전 airoff 후 SETTLE_SECS 정치하고 읽는다
+#   (샘플 사이 MEAS_INTERVAL 구간은 폭기 유지 = 평형 계속 붙듦). 측정 전엔 PREAERATE_SECS 만큼 먼저
+#   폭기해 시료를 평형 근처까지 올린다. 값은 완주 이력(tank 51/ref 50런)의 '평탄 도달 중앙값 − net8
+#   확인창' = 런별 elapsed[flat_n-8] 중앙값(tank≈1483s, ref≈205s)에서 채택.
+PREAERATE_SECS = {'tank': 1500, 'ref': 210}   # 측정 전 고정 사전폭기(초). tank 25분 / ref 3.5분
+SETTLE_SECS    = 10      # read 직전 airoff 후 정치(초) — 버블·전기 과도 소산 뒤 읽기
 # ── ★무한 대기 방지 상한 ──
-PHASE_MAX_SECS = 7200    # phase(tank/ref)별 최대 측정 시간(초)=2h. 2-phase라 총 4h(측정 갭 8h의 절반). 초과 시 마지막값+경고
-MEAS_MAX       = 240     # phase별 최대 측정 횟수(백스톱)=7200s/30s, PHASE_MAX_SECS와 정합
+PHASE_MAX_SECS = 5400    # phase별 최대 '측정' 시간(초)=90분(사전폭기 제외). 사전폭기(총 ~28.5분)가 phase
+                         #   밖 추가분이라 7200이면 worst-case 총런 ~4h43m로 스케줄러 kill(5h) 근접 → 5400
+                         #   으로 worst-case ~3h45m. 사전폭기가 수렴을 앞당겨 이력상 최장일도 90분 내 충분.
+MEAS_MAX       = 180     # phase별 최대 측정 횟수(백스톱)=5400s/30s, PHASE_MAX_SECS와 정합
 FAIL_MAX       = 5       # 연속 측정 파싱 실패 허용 횟수 → 초과 시 phase 실패
 # ── ★HC-06 블루투스 RF 순단 대응(사용자 설계 2026-06-23): 측정이 BT SPP(COM9)로 돌아 RF 링크가
 #    간헐적으로 끊긴다(장시간 다운은 없음; 펌웨어는 살아있고 드롭은 대개 '보낼 때 이미 끊겨 있음').
@@ -502,7 +511,8 @@ def parse_ph(lines, label):
 
 
 def measure_until_flat(ser, what):
-    """폭기 켠 채(ron, 호출자가 ON 상태로 진입) what('tank'/'ref')를 반복 측정.
+    """what('tank'/'ref')를 반복 측정. ★read 직전에만 폭기 off + SETTLE_SECS 정치(모터 노이즈 차단),
+    샘플 사이 MEAS_INTERVAL 구간은 ron 재폭기로 평형 유지(호출자가 고정 사전폭기 후 ON 상태로 진입).
     평형 판정 = 최근 FLAT_SPAN_N개 (max−min) ≤ FLAT_SPAN_MPH (흔들림) AND
                 최근 FLAT_NET_N개 양끝차 ≤ FLAT_NET_MPH (드리프트).
     ★B1: net 룩백(FLAT_NET_N)을 span(FLAT_SPAN_N)보다 길게 둬 느린 단조 꼬리 조기 latch 차단.
@@ -522,6 +532,13 @@ def measure_until_flat(ser, what):
     n_ok = 0          # 유효샘플 수(파싱 실패 제외) — MIN_N 판정용
     while True:
         n += 1
+        # ★read 직전(2026-07-23): 기포기 모터 노이즈 차단 — 폭기 끄고 SETTLE_SECS 정치 후 읽는다.
+        #   airoff 실패는 무시(링크 문제면 바로 아래 read 가 링크 사망 판별로 처리, 폭기는 다음 샘플서 정상화).
+        try:
+            send(ser, 'airoff', stop_pattern='OFF')
+        except (serial.SerialException, OSError):
+            pass
+        keepalive_sleep(ser, SETTLE_SECS)              # airoff 후 정치(버블·전기 과도 소산)
         try:
             lines = send(ser, what, stop_pattern='[OK]', timeout=MEAS_READ_TIMEOUT)
         except (serial.SerialException, OSError):
@@ -572,7 +589,12 @@ def measure_until_flat(ser, what):
         if n >= MEAS_MAX:
             print(f"    [상한] {what} 측정 {MEAS_MAX}회 초과 — 미평탄, 마지막값 {last_ph} 채택")
             return last_ph, n, False
-        keepalive_sleep(ser, MEAS_INTERVAL)   # 측정 간 30s 유휴 — keepalive 로 RF 링크 유지
+        # ★샘플 사이: 재폭기(ron) 후 유휴 — 폭기 유지로 평형을 계속 붙든다(read 직전에만 다시 off).
+        try:
+            send(ser, 'ron', stop_pattern='참조ON')
+        except (serial.SerialException, OSError):
+            pass
+        keepalive_sleep(ser, MEAS_INTERVAL)   # 측정 간 30s 유휴(폭기 유지) — keepalive 로 RF 링크 유지
 
 
 # ─────────────────────────────────────────────
@@ -749,7 +771,11 @@ def run_measurement(ser, tank_dkh=None):
         #    이 동안 ref(5L)는 동시 폭기로 평형에 도달 → [B] ref 측정이 빨라짐(co-aeration).
         send(ser, 'airoff', stop_pattern='OFF')
         send(ser, 'ron', stop_pattern='참조ON')
-        print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 동시) — tank 평탄까지 측정")
+        print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 동시)")
+        _pt = PREAERATE_SECS['tank']
+        print(f"[사전폭기] tank {_pt}초(≈{_pt/60:.1f}분) — 평형 도달용 고정 폭기(측정 전, 미측정)")
+        keepalive_sleep(ser, _pt)                        # ★고정 사전폭기 — read 직전에만 off 하는 측정으로 진입
+        print("[측정] tank 평탄까지 — read 직전에만 폭기 off")
         tank_ph, tank_n, tank_flat = measure_until_flat(ser, 'tank')
         if tank_ph is None:
             raise RuntimeError("tank 측정 실패(응답 없음)")
@@ -768,7 +794,11 @@ def run_measurement(ser, tank_dkh=None):
         #    ref 는 5L서 내내 co-aeration 됐으므로 평형 근처서 시작 → 빨리 끝남.
         send(ser, 'airoff', stop_pattern='OFF')
         send(ser, 'ron', stop_pattern='참조ON')
-        print("\n[폭기] ON (측정챔버 ref + 5L 위즈수조 동시) — ref 평탄까지 측정")
+        print("\n[폭기] ON (측정챔버 ref + 5L 위즈수조 동시)")
+        _pr = PREAERATE_SECS['ref']
+        print(f"[사전폭기] ref {_pr}초(≈{_pr/60:.1f}분) — 평형 도달용 고정 폭기(측정 전, 미측정)")
+        keepalive_sleep(ser, _pr)                        # ★고정 사전폭기(ref 는 5L co-aeration 으로 이미 평형 근처라 짧음)
+        print("[측정] ref 평탄까지 — read 직전에만 폭기 off")
         ref_ph, ref_n, ref_flat = measure_until_flat(ser, 'ref')
         if ref_ph is None:
             raise RuntimeError("ref 측정 실패(응답 없음)")
