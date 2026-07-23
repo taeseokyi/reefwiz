@@ -29,3 +29,7 @@ firmware/*.bin
 
 # Arduino 빌드 산출물
 firmware/**/build/
+
+# KMA API 인증키 (절대 커밋 금지)
+kma_authkey.txt
+bin/kma_authkey.txt
