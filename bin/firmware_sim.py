@@ -58,6 +58,7 @@ class FirmwareSim:
         self.garble = set()         #   측정 응답에서 pH 라인 누락 → 호스트 parse 실패(FAIL_MAX 경로)
         self.no_done = set()        #   모터 응답에서 '[모터n] 완료' 누락 → 미완료(튜브 막힘 모사)
         self.hang = False           # True 면 모든 명령을 읽되 응답 안 함(펌웨어 먹통 모사)
+        self.no_reply = {}          # {부분문자열: 생략할 응답 횟수} — 소켓 유지한 채 이 명령 응답만 n회 생략(조용한 유실 모사)
 
     # ── 서버 ──────────────────────────────────────────────
     def start(self):
@@ -111,6 +112,10 @@ class FirmwareSim:
                     continue
                 self.received.append(cmd)
                 if self.hang:      # 펌웨어 먹통: 읽되 응답 안 함(소켓은 유지)
+                    continue
+                hit = next((p for p in self.no_reply if p in cmd and self.no_reply[p] > 0), None)
+                if hit:            # 조용한 유실: 소켓은 살린 채 이 명령 응답만 생략(send 재시도까지 소진)
+                    self.no_reply[hit] -= 1
                     continue
                 d = self._match_drop(cmd, 'before')
                 if d:

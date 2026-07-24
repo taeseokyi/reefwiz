@@ -9,8 +9,8 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 23 시나리오 / 122 검증:
-  ── 정상/회복 11 시나리오(62 검증) ──
+총 24 시나리오 / 127 검증:
+  ── 정상/회복 12 시나리오(67 검증) ──
     [1] 클린 calkh           (9) 전체 흐름·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
     [3] 모터 드롭→정지·재송신(5) 재시도 시 mNs 정지 후 재송신(순서 m1f→m1s→m1f)
@@ -22,6 +22,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [19] 링크 사망→복귀      (5) 평탄 phase 중 완전 두절→재기동→끈질긴 대기가 재접속·측정 재개·완주
     [20] 무딘 S커브 MIN_N    (8) 저진폭 lag false lock 재현(a) + FLAT_MIN_N_TANK=20 시 참평형 도달·ref 미적용(b)
     [23] 사전폭기+폭기 토글   (5) 고정 사전폭기(tank1500/ref210s) 수행 + read 직전 airoff·샘플사이 ron 재폭기(2026-07-23)
+    [24] ron 유실 대비        (5) 조용한 ron 응답 유실→(a)감지·reconnect·재송신 자가치유·정확도 유지 (b)지속 유실 시 유한 False+★★경고(2026-07-24)
   ── 예외 12 시나리오(60 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
@@ -87,11 +88,12 @@ def open_ser(port):
     return serial.serial_for_url(f'socket://127.0.0.1:{port}', baudrate=9600, timeout=1)
 
 
-def run(fn, drops=None, tank_dkh=None, tank_profile=None):
+def run(fn, drops=None, tank_dkh=None, tank_profile=None, no_reply=None):
     """sim 시작→ser 연결→run_measurement→(result, captured_stdout, sim) 반환."""
     sim = FirmwareSim()
     sim.drops = drops or []
     sim.tank_profile = tank_profile
+    sim.no_reply = dict(no_reply or {})
     port = sim.start()
     time.sleep(0.1)
     ser = open_ser(port)
@@ -740,6 +742,30 @@ def scenario_preaerate_toggle():
           f"result={result}")
 
 
+def scenario_ron_loss():
+    print("\n[24] ron(재폭기) 유실 대비 — 감지·자가치유·경고 (2026-07-24)")
+    # sim 은 폭기→pH 결합이 없어 '유실→수치 편향'은 재현 불가 → 감지·자가치유·비행(non-hang)·로깅을 검증.
+    # ron send 는 기본 timeout(5s)이라 유실 시 대기가 길다 → read_until 을 짧게 캡해 테스트 속도만 확보(의미 불변).
+    saved_ru = mk.read_until
+    def fast_ru(ser, pat, timeout, keepalive=False):
+        return saved_ru(ser, pat, min(timeout, 0.3), keepalive=keepalive)
+    mk.read_until = fast_ru
+    try:
+        # (a) 자가치유: 첫 ron(tank 사전폭기)의 send 3시도 응답을 전부 생략 → 헬퍼가 감지→reconnect→재송신 복구.
+        result, out, sim = run(lambda ser: mk.run_measurement(ser), no_reply={'ron': mk.SEND_RETRY_MAX})
+        check("ron 유실 감지·재확인 로그", '재폭기 미확인' in out, "out에 '재폭기 미확인' 없음")
+        check("자가치유(최종 경고 없음)", '★★[경고]' not in out, "예상외 최종 ★★[경고]")
+        check("자가치유 후 정확도 유지",
+              result is not None and result[3] is not None and abs(result[3] - EXPECT_TANK_DKH) < 0.01,
+              f"result={result}")
+        # (b) 지속 유실(단위): ron 응답 영구 생략 → 헬퍼가 유한 시간에 False 반환 + ★★[경고](측정 루프를 막지 않음).
+        ok, out2, _ = run(lambda ser: mk.ensure_aeration_on(ser, '단위'), no_reply={'ron': 999})
+        check("지속 유실 시 False 반환(유한·non-hang)", ok is False, f"ok={ok}")
+        check("지속 유실 시 ★★[경고] 로깅", '★★[경고]' in out2, "경고 미출력")
+    finally:
+        mk.read_until = saved_ru
+
+
 def main():
     print("=" * 56)
     print("measure_kh_once 통합 테스트 (firmware_sim)")
@@ -770,6 +796,7 @@ def main():
     scenario_cleanup_precond()
     scenario_cleanup_state()
     scenario_preaerate_toggle()
+    scenario_ron_loss()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
     print("=" * 56)

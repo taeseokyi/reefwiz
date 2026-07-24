@@ -407,6 +407,34 @@ def _wait_link_recovery(ser, phase_t0):
     return False
 
 
+def ensure_aeration_on(ser, where=''):
+    """★ron(재폭기 ON) 송신·'참조ON' 확인(2026-07-24). 미확인이면 reconnect 후 1회 재확인.
+    최종 미확인 시 ★★[경고] 로깅하고 False 반환(폭기가 실제로 안 켜졌을 수 있음 =
+    사일런트 편향을 measure_kh.log 에 가시화). best-effort — 예외도 삼켜 측정을 중단시키지 않는다.
+
+    배경: send() 는 '참조ON' 응답을 SEND_RETRY_MAX 회 재시도해도 못 받으면 예외 없이 (부분/빈)
+    리스트를 조용히 리턴한다. 이전엔 ron 호출부가 그 반환값을 안 봐서, read 직전 airoff 로 폭기가
+    꺼진 상태로 재폭기가 유실돼도 어디에도 안 남았다(사전폭기 진입 전 유실 시 25분 사전폭기 전체가
+    폭기 없이 흐름 → 미평형 편향이 조용히 발행·도저 전파). 여기서 반환값을 검사해 감지·재점화·경고한다.
+    ron 은 래칭이라 사전폭기 구간엔 1회 확인이면 폭기가 그 phase 내내 유지된다."""
+    tag = f" ({where})" if where else ''
+    for attempt in (1, 2):
+        try:
+            lines = send(ser, 'ron', stop_pattern='참조ON')
+        except (serial.SerialException, OSError):
+            lines = []
+        if any('참조ON' in ln for ln in (lines or [])):
+            return True
+        if attempt == 1:
+            print(f"    [RF] ron 재폭기 미확인{tag} → 재연결 후 재확인")
+            try:
+                reconnect(ser, f"ron 재폭기 미확인{tag}")
+            except (serial.SerialException, OSError):
+                pass
+    print(f"    ★★[경고] ron 재폭기 최종 미확인{tag} — 폭기 꺼진 채 진행 가능성(측정 신뢰도 주의)")
+    return False
+
+
 def _motor_index(cmd):
     """'m1f:70'/'m2b:68' → 1/2. 모터 구동 명령이 아니면 None."""
     m = re.match(r'm([1-4])[fb]:', cmd)
@@ -590,10 +618,8 @@ def measure_until_flat(ser, what):
             print(f"    [상한] {what} 측정 {MEAS_MAX}회 초과 — 미평탄, 마지막값 {last_ph} 채택")
             return last_ph, n, False
         # ★샘플 사이: 재폭기(ron) 후 유휴 — 폭기 유지로 평형을 계속 붙든다(read 직전에만 다시 off).
-        try:
-            send(ser, 'ron', stop_pattern='참조ON')
-        except (serial.SerialException, OSError):
-            pass
+        #   ★ron 유실 감지·재점화(2026-07-24): 반환값 확인해 조용한 유실을 로깅/복구.
+        ensure_aeration_on(ser, 'sample')
         keepalive_sleep(ser, MEAS_INTERVAL)   # 측정 간 30s 유휴(폭기 유지) — keepalive 로 RF 링크 유지
 
 
@@ -770,7 +796,7 @@ def run_measurement(ser, tank_dkh=None):
         # ── [A] 폭기 ON (측정챔버 tank + 5L 위즈수조 동시) — tank 평탄까지 측정 ──
         #    이 동안 ref(5L)는 동시 폭기로 평형에 도달 → [B] ref 측정이 빨라짐(co-aeration).
         send(ser, 'airoff', stop_pattern='OFF')
-        send(ser, 'ron', stop_pattern='참조ON')
+        ensure_aeration_on(ser, 'tank 사전폭기')   # ★유실 시 25분 사전폭기 전체가 폭기 없이 흐름 → 확인 필수
         print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 동시)")
         _pt = PREAERATE_SECS['tank']
         print(f"[사전폭기] tank {_pt}초(≈{_pt/60:.1f}분) — 평형 도달용 고정 폭기(측정 전, 미측정)")
@@ -793,7 +819,7 @@ def run_measurement(ser, tank_dkh=None):
         # ── [B] 폭기 ON (측정챔버 ref + 5L 위즈수조 동시) — ref 평탄까지 측정 ──
         #    ref 는 5L서 내내 co-aeration 됐으므로 평형 근처서 시작 → 빨리 끝남.
         send(ser, 'airoff', stop_pattern='OFF')
-        send(ser, 'ron', stop_pattern='참조ON')
+        ensure_aeration_on(ser, 'ref 사전폭기')   # ★유실 시 사전폭기가 폭기 없이 흐름 → 확인 필수
         print("\n[폭기] ON (측정챔버 ref + 5L 위즈수조 동시)")
         _pr = PREAERATE_SECS['ref']
         print(f"[사전폭기] ref {_pr}초(≈{_pr/60:.1f}분) — 평형 도달용 고정 폭기(측정 전, 미측정)")
