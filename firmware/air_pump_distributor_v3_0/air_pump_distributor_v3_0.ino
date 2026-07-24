@@ -14,7 +14,8 @@
   - claude 개선, 명령은 개행(\n) 완성 시에만 처리(BT 순단 시 잘린 명령 오저장 방지), 수신 delay(5) 제거(연속 수신 시 loop 독점 방지), 64자 상한
   - claude 개선, debug reset의 timer0_millis 쓰기 인터럽트 보호, startup() 참조 전달로 변경
   - claude 개선, 문자열 리터럴 F() 매크로로 플래시 이동(SRAM 절약), cmdString.reserve(64), help/주석 단위 표기 실제 코드와 일치(gt=초, rt/test=ms)
- 이태석, 2024.9.28, 2025.5.29, 2025.10.9, 2025.12.13, 2026.7.2
+  - claude 개선, 롤오버 시 refresh_all_timers() 제거(위 6번 항목 재검토): SimpleTimer.isReady()가 (millis()-_previous)를 부호 없는 32비트 뺄셈으로 비교하므로 millis() 롤오버(≈49.7일)를 스스로 정확히 넘긴다. 롤오버마다 타이머를 리셋하면 진행 중이던 GAP 카운트다운이 버려져 ~49.7일에 1회 토출(밸브 동작)이 최대 1주기 늦춰지는 '주기 밀림'이 있었음. Diff_Time(로그 시각) 보정은 유지, setup()·"refresh all" 명령에서의 호출은 필수라 그대로 둠
+ 이태석, 2024.9.28, 2025.5.29, 2025.10.9, 2025.12.13, 2026.7.2, 2026.7.24
 */
 
 #include <SoftwareSerial.h>
@@ -399,10 +400,12 @@ void setup() {
 void loop() {
   unsigned long curr_time = millis();
 
-  if (prev_time > curr_time) { // 타이머 최대 값에 도달해서 초기화 되어 다시 증가하는 시점
+  if (prev_time > curr_time) { // millis() 롤오버(≈49.7일마다 최대치에서 0 으로 되돌아가는 시점)
     Diff_Time = trunc_less_24h(trunc_less_24h(4294967295L) + Diff_Time + 1);
     prev_time = 0L;
-    refresh_all_timers();
+    // 여기서 refresh_all_timers() 를 호출하지 않는다: SimpleTimer 는 (millis()-_previous)를
+    // 부호 없는 32비트 뺄셈으로 재므로 롤오버를 스스로 정확히 넘긴다. 리셋하면 진행 중이던
+    // GAP 카운트다운이 버려져 ~49.7일에 1회 토출이 최대 1주기 밀렸음(2026.7.24 제거).
   }
   else {
     prev_time = curr_time;
