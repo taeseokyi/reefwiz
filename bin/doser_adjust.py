@@ -17,6 +17,8 @@
   재개하려면 AUTO_APPLY=True 로 바꾸고 배포본 재복사.
 - 안전 레일: 유효 측정 부족 시 중단 / 1회 조정 스텝 ±30% / lrt 절대범위 2000~24000ms
   (사용자 지정 상한 3배=원액 18mL/일) / 변화 200ms 미만은 스킵(데드밴드·EEPROM 마모).
+  ※자동 조정은 이 레일 안에서만 움직인다(정지 불가). 정지(lrt 0)는 대시보드 수동 설정
+  0mL/일로만 가능(plan_lrt). gap(lgt)은 어느 경로에서도 건드리지 않는다.
 - ★CO₂ 편향 의심 제외(2026-07-13): 새벽 실내 CO₂ 축적으로 dKH가 −0.07~−0.24 낮게
   나오는 측정(판정=ref 곡선 형태, parse_plateau_log.classify_co2_suspect 단일 소스)을
   추세·수준 계산에서 제외한다. 플래그는 GitHub 의 docs/dkh_series.json(co2_suspect
@@ -34,7 +36,8 @@
   그 파일을 GitHub API 로 읽어(Pages 배포 지연 회피), 아직 적용 안 한 id 면 도저에 적용
   하고 이력(mode=manual)에 남긴다 → sync 로 대시보드에 "적용됨" 표시. 새 오버라이드가
   있는 회차는 자동 조정을 건너뛴다(수동 우선). 적용 성공한 id 만 상태 파일에 기록되므로
-  실패(BT 순단 등)하면 다음 측정 후 자동 재시도된다.
+  실패(BT 순단 등)하면 다음 측정 후 자동 재시도된다. 값 0 = 정지(lrt 0, 무배출);
+  1.5~18mL/일은 종전대로. 대시보드가 (0,1.5) 사이는 막지만 오면 방어적으로 하한 처리.
 - CLI: (인자 없음)=오버라이드 확인만 / --slot-adjust=오버라이드 확인+정기 자동 조정
   (래퍼가 매일 13시 회차에만 붙임) / --check(장치 조회만) / --dry-run(계산만, 무접속).
 
@@ -120,6 +123,21 @@ def lrt_to_ml_day(lrt_ms):
 
 def ml_day_to_lrt(ml_day):
     return ml_day / (DOSES_PER_DAY * DILUTION) * MS_PER_ML
+
+
+def plan_lrt(ml_day):
+    """수동 설정값(원액 mL/일) → 목표 lrt(ms), 클램프 메모. gap(lgt)은 건드리지 않는다.
+
+    - 0 이하 = 정지: lrt 0(펌프 0ms 가동=무배출). 게이트 타이머가 언제 점화하든 결과가
+      항상 0이라 롤오버 주기 밀림과 무관 = 지터 없는 정지.
+    - 양수 = [LRT_MIN, LRT_MAX] 클램프(0.5mL/회 미만 미세 도징은 기계적 신뢰 어려움).
+      대시보드는 0 또는 1.5~18mL/일만 보내지만, 방어적으로 (0,1.5) 도 하한으로 올린다.
+    """
+    if ml_day <= 0:
+        return 0, "정지"
+    raw = int(round(ml_day_to_lrt(ml_day) / 100.0) * 100)
+    lrt = max(LRT_MIN, min(LRT_MAX, raw))
+    return lrt, ("" if lrt == raw else f"범위 클램프 {raw}→{lrt}ms")
 
 
 def read_dat_lines(path=None):
@@ -372,14 +390,12 @@ def save_applied_override_id(oid):
 
 
 def apply_manual_override(ov):
-    """사용자 지정 값(원액 mL/일)을 도저에 적용. 성공 시 상태 저장(재시도 방지)."""
-    raw_lrt = ml_day_to_lrt(ov["ml_day"])
-    new_lrt = int(round(raw_lrt / 100.0) * 100)
-    clamped = max(LRT_MIN, min(LRT_MAX, new_lrt))
-    note = "대시보드 수동 설정"
-    if clamped != new_lrt:
-        note += f" | 범위 클램프 {new_lrt}→{clamped}ms"
-        new_lrt = clamped
+    """사용자 지정 값(원액 mL/일)을 도저에 적용. 성공 시 상태 저장(재시도 방지).
+    0 = 정지(lrt 0). 그 외는 plan_lrt 가 [LRT_MIN, LRT_MAX] 로 클램프(gap 불변)."""
+    new_lrt, plan_note = plan_lrt(ov["ml_day"])
+    note = "대시보드 " + ("정지(lrt 0)" if new_lrt == 0 else "수동 설정")
+    if plan_note and new_lrt != 0:
+        note += " | " + plan_note
 
     try:
         ser = open_doser()

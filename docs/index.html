@@ -291,8 +291,8 @@
         </table>
       </div>
       <div class="doser-manual">
-        <input type="number" id="doserManualMl" min="1.5" max="18" step="0.1" inputmode="decimal"
-               placeholder="원액 mL/일" aria-label="수동 도징량(원액 mL/일)">
+        <input type="number" id="doserManualMl" min="0" max="18" step="0.1" inputmode="decimal"
+               placeholder="원액 mL/일 (0=정지)" aria-label="수동 도징량(원액 mL/일, 0=정지)">
         <button type="button" class="range-btn" id="doserManualSave">수동 설정</button>
         <input type="number" id="doserTargetDkh" min="6" max="9" step="0.1" inputmode="decimal"
                placeholder="목표 dKH" aria-label="목표 dKH">
@@ -321,8 +321,9 @@
           <li>목표 접근: 오차를 <b>7일</b>에 걸쳐 좁힘 — dKH 변화 속도 상한
             <b>±0.25 dKH/일</b> (허용 오차 ±0.5의 절반)</li>
           <li>1회 조정 폭: 현재 도징량의 <b>최대 ±30%</b><span id="doserNextRange"></span></li>
-          <li>도징량 절대 범위: <b>원액 1.5~18.0 mL/일</b>
-            (실도징 3~36 mL/일, 펌프 2000~24000ms)</li>
+          <li>도징량 절대 범위: <b>원액 1.5~18.0 mL/일</b> 또는 <b>0 = 정지</b>
+            (실도징 3~36 mL/일, 펌프 2000~24000ms; 정지는 lrt 0 = 무배출). 자동 조정은
+            1.5~18 안에서만 움직이고, <b>정지는 수동 설정으로만</b> 가능</li>
           <li>미세 변경 무시(데드밴드): 원액 0.15 mL/일(200ms) 미만 차이는 유지</li>
           <li>감도 가정: 원액 1 mL/일 ≈ <b>+0.006 dKH/일</b>
             (6/29 볼루스 55mL→+0.32 dKH 실측 유도)</li>
@@ -669,6 +670,7 @@
   // 같은 값이어야 한다. 설정 목록(doser-settings)의 고정 문구도 함께 갱신할 것.
   const DOSER_STEP_MAX_FRAC = 0.30, DOSER_ML_MIN = 1.5, DOSER_ML_MAX = 18.0;
   const realDose = (mlStock) => {
+    if (!(mlStock > 0)) return "정지 (도징 안 함)";  // 0=정지(lrt 0)
     const daily = mlStock / DOSER_DILUTION;
     return "실도징 " + (daily / DOSER_DOSES_PER_DAY).toFixed(1) + " mL × " +
       DOSER_DOSES_PER_DAY + "회 = " + daily.toFixed(1) + " mL/일";
@@ -692,14 +694,21 @@
       if (latest) {
         const curMl = latest.applied ? latest.ml_day_new : latest.ml_day_old;
         const curLrt = latest.applied ? latest.lrt_new : latest.lrt_old;
-        document.getElementById("doserNow").textContent =
-          "현재 도징: 원액 " + curMl.toFixed(1) + " mL/일 (" + realDose(curMl) +
-          ", 1회 " + (curLrt / 1000).toFixed(1) + "초) · " + fmtTs(latest.ts) + " 기준";
-        const nextLo = Math.max(DOSER_ML_MIN, curMl * (1 - DOSER_STEP_MAX_FRAC));
-        const nextHi = Math.min(DOSER_ML_MAX, curMl * (1 + DOSER_STEP_MAX_FRAC));
-        document.getElementById("doserNextRange").textContent =
-          " — 지금(" + curMl.toFixed(1) + " mL/일) 기준 다음 조정은 원액 " +
-          nextLo.toFixed(1) + "~" + nextHi.toFixed(1) + " mL/일 안";
+        if (curMl > 0) {
+          document.getElementById("doserNow").textContent =
+            "현재 도징: 원액 " + curMl.toFixed(1) + " mL/일 (" + realDose(curMl) +
+            ", 1회 " + (curLrt / 1000).toFixed(1) + "초) · " + fmtTs(latest.ts) + " 기준";
+          const nextLo = Math.max(DOSER_ML_MIN, curMl * (1 - DOSER_STEP_MAX_FRAC));
+          const nextHi = Math.min(DOSER_ML_MAX, curMl * (1 + DOSER_STEP_MAX_FRAC));
+          document.getElementById("doserNextRange").textContent =
+            " — 지금(" + curMl.toFixed(1) + " mL/일) 기준 다음 조정은 원액 " +
+            nextLo.toFixed(1) + "~" + nextHi.toFixed(1) + " mL/일 안";
+        } else {
+          document.getElementById("doserNow").textContent =
+            "현재 도징: 정지 (lrt 0, 무배출) · " + fmtTs(latest.ts) + " 기준";
+          document.getElementById("doserNextRange").textContent =
+            " — 정지 상태(재개 시 원액 1.5 mL/일부터)";
+        }
       }
 
       const badge = {
@@ -740,8 +749,10 @@
           const applied = hist.some((e) => e.mode === "manual" && e.applied && e.override_id === ov.id);
           if (!applied) {
             document.getElementById("doserManualStatus").textContent =
-              "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 (" + realDose(ov.ml_day) +
-              ") — 몇 분 내 적용됩니다";
+              ov.ml_day > 0
+                ? "⏳ 수동 설정 대기 중: 원액 " + ov.ml_day + " mL/일 (" + realDose(ov.ml_day) +
+                  ") — 몇 분 내 적용됩니다"
+                : "⏳ 정지 대기 중 (lrt 0) — 몇 분 내 적용됩니다";
           }
         })
         .catch(() => {});
@@ -799,20 +810,22 @@
   document.getElementById("doserManualSave").addEventListener("click", async () => {
     const statusEl = document.getElementById("doserManualStatus");
     const ml = Math.round(parseFloat(document.getElementById("doserManualMl").value) * 10) / 10;
-    if (!(ml >= 1.5 && ml <= 18)) {
-      statusEl.textContent = "원액 1.5~18 mL/일 범위로 입력하세요";
+    if (!(ml === 0 || (ml >= 1.5 && ml <= 18))) {
+      statusEl.textContent = "원액 0(정지) 또는 1.5~18 mL/일로 입력하세요";
       return;
     }
     const ok = await ghCommitJson(
       DOSER_OV_API,
       { ml_day: ml, id: new Date().toISOString() },
-      "config: 도저 수동 설정 " + ml + " mL/일 (대시보드)",
+      ml === 0 ? "config: 도저 정지 (대시보드)" : "config: 도저 수동 설정 " + ml + " mL/일 (대시보드)",
       statusEl
     );
     if (ok)
       statusEl.textContent =
-        "✅ 저장됨: 원액 " + ml + " mL/일 (" + realDose(ml) +
-        ") — 몇 분 내(최대 ~5분) 적용됩니다";
+        ml === 0
+          ? "✅ 저장됨: 정지 (lrt 0) — 몇 분 내(최대 ~5분) 적용됩니다"
+          : "✅ 저장됨: 원액 " + ml + " mL/일 (" + realDose(ml) +
+            ") — 몇 분 내(최대 ~5분) 적용됩니다";
   });
 
   // 목표 dKH — 저장 즉시가 아니라 다음 자동 조정 회차(매일 13시)부터 반영된다.

@@ -12,6 +12,7 @@
   [4] sync_dkh_dat lazy 백필 — 필드 부여·upsert/42런 잘림 불변
   [5] doser_adjust 접미 정렬·제외 — k 오프셋, 폴백, 인덱스 간격 보존, 가드
   [6] 스모크 — 실제 docs/dkh_series.json + data/dkh.dat 로 정렬 성립
+  [7] plan_lrt — 0=정지(lrt 0)·(0,1.5)→하한·범위 클램프 (2026-07-24 수동 정지)
 
 테스트 패치는 전부 in-memory(모듈 변수 교체·인자 주입)만 사용 — 소스 실전 상수 불변.
 """
@@ -85,6 +86,9 @@ EXPECTED_SUSPECT = {
     "2026-07-05 21:00", "2026-07-06 05:00", "2026-07-08 05:00",
     "2026-07-08 13:00", "2026-07-11 05:00", "2026-07-12 05:00",
     "2026-07-13 05:00",
+    # 2026-07-24 재기준화: 7/13 이후 새로 뜬 편향 런(전부 dkh_series.json co2_suspect=true
+    # 교차확인 + [[project-seasonal-baseline-retention]] 기록). 롤링 창 이동에 따른 갱신.
+    "2026-07-18 05:00", "2026-07-19 05:00", "2026-07-22 05:00", "2026-07-22 13:00",
 }
 
 
@@ -352,6 +356,32 @@ def test_smoke():
               f"{len(pts)} < {doser_adjust.MIN_VALID}")
 
 
+# ------------------------------------------------------------- [7] plan_lrt (정지·클램프)
+def test_plan_lrt():
+    print("\n[7] plan_lrt — 0=정지·범위 클램프 (2026-07-24 수동 정지 기능)")
+    pl = doser_adjust.plan_lrt
+
+    lrt0, note0 = pl(0)
+    check("0mL/일 → lrt 0 (정지)", lrt0 == 0 and note0 == "정지", f"{lrt0},{note0!r}")
+    check("음수 → 정지", pl(-1)[0] == 0)
+    check("정지는 lrt_to_ml_day(0)==0 로 보고", doser_adjust.lrt_to_ml_day(0) == 0)
+
+    check("1.5mL/일 → 하한 2000ms", pl(1.5) == (2000, ""), str(pl(1.5)))
+    check("18mL/일 → 상한 24000ms", pl(18) == (24000, ""), str(pl(18)))
+    check("6.0mL/일 → 8000ms", pl(6.0) == (8000, ""), str(pl(6.0)))
+    check("2.03mL/일 → 2700ms(현 실도징)", pl(2.03)[0] == 2700, str(pl(2.03)))
+
+    # (0,1.5) 방어: 대시보드가 막지만 값이 오면 하한으로 올림(정지 아님)
+    lrt_low, note_low = pl(0.5)
+    check("0.5mL/일 → 2000ms 상향(정지 아님)", lrt_low == 2000 and "클램프" in note_low,
+          f"{lrt_low},{note_low!r}")
+    lrt_hi, note_hi = pl(25)
+    check("25mL/일 → 24000ms 하향", lrt_hi == 24000 and "클램프" in note_hi,
+          f"{lrt_hi},{note_hi!r}")
+
+    check("왕복 6.0→8000→6.0", doser_adjust.lrt_to_ml_day(pl(6.0)[0]) == 6.0)
+
+
 def main():
     test_classify()
     test_retro()
@@ -359,6 +389,7 @@ def main():
     test_sync_backfill()
     test_doser()
     test_smoke()
+    test_plan_lrt()
     print(f"\n결과: {_passed} PASS / {_failed} FAIL")
     sys.exit(1 if _failed else 0)
 
