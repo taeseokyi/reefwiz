@@ -187,6 +187,7 @@ class FirmwareSim:
                    else f'[수조수] V:1234.567 pH:{ph:.3f} T:{TEMP:.1f}C')
             return ['', '[START] 수조수 측정(8초)...',
                     '  샘플링: 16/64', '  샘플링: 32/64', '  샘플링: 48/64', '  샘플링: 64/64',
+                    '  [RAW] min=11072 mid=11073 max=11074 z=0',   # ★신펌웨어 진단줄(호스트 파싱 무영향 검증)
                     val, '[OK]']
         if cmd == 'ref':
             self.ref_ph = REF_PH; self.ref_meas_done = True
@@ -194,6 +195,7 @@ class FirmwareSim:
                    else f'[참조수] V:1234.567 pH:{REF_PH:.3f} T:{TEMP:.1f}C')
             return ['', '[START] 참조수 측정(8초)...',
                     '  샘플링: 16/64', '  샘플링: 32/64', '  샘플링: 48/64', '  샘플링: 64/64',
+                    '  [RAW] min=11072 mid=11073 max=11074 z=0',   # ★신펌웨어 진단줄(호스트 파싱 무영향 검증)
                     val, '[OK]']
         # setref:x → refDKH 설정
         m = re.match(r'setref:([\d.]+)$', cmd)

@@ -6,9 +6,11 @@
 
 #include "DFRobot_PH.h"
 #include <EEPROM.h>
+#include <Wire.h>
 #include <Adafruit_ADS1X15.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <avr/wdt.h>
 
 // ============================================================
 // 핀 정의
@@ -89,6 +91,8 @@ DFRobot_PH        ph;
 const int           SAMPLE_N        = 64;
 const int           TRIM_N          = 16;   // 트림 평균: 정렬 후 상·하위 각 TRIM_N개 버림(버블 스파이크 제거). 0이면 단순 평균
 const unsigned long SAMPLE_INTERVAL = 125;
+const unsigned long ADS_CONV_TIMEOUT = 400;   // 정상 변환 125ms(8SPS); 초과 시 I2C 물림 판정→복구
+const int           ADS_MAX_FAIL     = 24;    // 측정 중 연속 ADS 실패 한계→측정 중단(펌웨어 응답 유지)
 
 // ============================================================
 // 전역 변수
@@ -98,6 +102,8 @@ float         sampleSum      = 0.0;       // (트림 평균으로 대체 — 리
 int16_t       sampleBuf[SAMPLE_N];        // 트림 평균용 raw 샘플 버퍼 (int16×64 = 128 B)
 unsigned long lastSampleTime = 0;
 bool          voltageReady   = false;
+int           adsFailStreak  = 0;         // 연속 ADS 실패(측정 중단 판정)
+long          adsFailTotal   = 0;         // 누적 I2C 물림 횟수(진단 로깅)
 
 float voltage     = 0.0;
 float phValue     = 0.0;
@@ -176,6 +182,7 @@ void printKHHist() {
 // 초기화
 // ============================================================
 void setup() {
+    MCUSR = 0; wdt_disable();             // ★부팅 시 워치독 확실히 해제(WDT 리셋 부트루프 방지)
     Serial.begin(9600);  // HC-06 기본 보드레이트
     BTPRINTLNF("=== AquaWiz v3.0 ===");
 
@@ -183,7 +190,11 @@ void setup() {
     if (sensors.getDeviceCount() == 0) BTPRINTLNF("[WARN] DS18B20 없음!");
     else                               BTPRINTLNF("[OK] DS18B20");
 
-    if (!ads.begin()) { BTPRINTLNF("[ERR] ADS1115 실패!"); while(1){delay(1000);} }
+    Wire.begin();
+    Wire.setWireTimeout(25000, true);     // ★I2C 25ms 타임아웃(물림 시 하드웨어 자동 리셋)
+    bool adsOk = false;
+    for (int i = 0; i < 5; i++) { if (ads.begin()) { adsOk = true; break; } BTPRINTLNF("[ERR] ADS1115 재시도"); delay(200); }
+    if (!adsOk) BTPRINTLNF("[ERR] ADS1115 초기화 실패 — 측정 시 자동 복구");   // ★while(1) 영구정지 제거
     ads.setGain(GAIN_ONE);
     ads.setDataRate(RATE_ADS1115_8SPS);
     BTPRINTLNF("[OK] ADS1115");
@@ -226,18 +237,68 @@ void setup() {
     }
 
     BTPRINTLNF("[READY] 명령대기 (help 입력)");
+    wdt_enable(WDTO_8S);                   // ★안전망: loop이 8초+ 멈추면(진짜 행) 자동 리셋
+}
+
+// ============================================================
+// I2C(ADS1115) 안전 읽기 + 버스 복구 — 간헐 물림이 영구 행이 되지 않게
+// ============================================================
+void recoverI2C() {
+    adsFailTotal++;
+    BTPRINTF("[I2C] 물림→버스복구 (누적"); BTPRINT(adsFailTotal); BTPRINTLNF("회)");
+    Wire.end();
+    // 슬레이브가 SDA를 붙잡고 있으면 SCL 9펄스로 놓게 한 뒤 STOP
+    pinMode(SDA, INPUT_PULLUP);
+    pinMode(SCL, OUTPUT);
+    for (int i = 0; i < 9 && digitalRead(SDA) == LOW; i++) {
+        digitalWrite(SCL, LOW);  delayMicroseconds(5);
+        digitalWrite(SCL, HIGH); delayMicroseconds(5);
+    }
+    pinMode(SDA, OUTPUT);
+    digitalWrite(SDA, LOW);  delayMicroseconds(5);
+    digitalWrite(SCL, HIGH); delayMicroseconds(5);
+    digitalWrite(SDA, HIGH); delayMicroseconds(5);   // STOP
+    Wire.begin();
+    Wire.setWireTimeout(25000, true);
+    bool ok = false;
+    for (int i = 0; i < 3; i++) {
+        if (ads.begin()) { ads.setGain(GAIN_ONE); ads.setDataRate(RATE_ADS1115_8SPS); ok = true; break; }
+        delay(50);
+    }
+    BTPRINTLN(ok ? F("[I2C] 복구 성공") : F("[I2C] 복구 실패(다음샘플 재시도)"));
+}
+
+// ADS 채널0 안전 읽기: 변환완료를 시간상한으로 대기. 물림이면 복구 후 *ok=false.
+int16_t readADSsafe(bool* ok) {
+    ads.startADCReading(ADS1X15_REG_CONFIG_MUX_SINGLE_0, false);
+    unsigned long t0 = millis();
+    while (!ads.conversionComplete()) {
+        if (millis() - t0 > ADS_CONV_TIMEOUT) { recoverI2C(); *ok = false; return 0; }
+    }
+    *ok = true;
+    return ads.getLastConversionResults();
 }
 
 // ============================================================
 // 메인 루프
 // ============================================================
 void loop() {
+    wdt_reset();                       // ★워치독 리셋(정상 루프는 빨라 안 터짐; 8초+ 진짜 행만 리셋)
     unsigned long now = millis();
 
     // ① pH 오버샘플링
     if (currentMode != MODE_IDLE && now - lastSampleTime >= SAMPLE_INTERVAL) {
         lastSampleTime = now;
-        int16_t raw = ads.readADC_SingleEnded(0);
+        bool adsOk;
+        int16_t raw = readADSsafe(&adsOk);
+        if (!adsOk) {                     // I2C 물림·복구 → 이 샘플 건너뜀(측정 계속)
+            if (++adsFailStreak >= ADS_MAX_FAIL) {   // 연속 과다 → 측정 중단(펌웨어 응답은 유지)
+                BTPRINTLNF("[ERR] ADS 연속 실패 → 측정 중단");
+                currentMode = MODE_IDLE; sampleCount = 0; voltageReady = false; adsFailStreak = 0;
+            }
+            return;
+        }
+        adsFailStreak = 0;
         if (raw < 0) raw = 0;
         sampleBuf[sampleCount] = raw;     // 트림 평균용: raw 저장 (정렬은 64개 모인 뒤)
         sampleCount++;
@@ -255,6 +316,10 @@ void loop() {
                 while (j >= 0 && sampleBuf[j] > key) { sampleBuf[j+1] = sampleBuf[j]; j--; }
                 sampleBuf[j+1] = key;
             }
+            // ★[진단] 트림 전 raw 분포 — 트림에 가린 I2C 나쁜 읽기 노출(정상=min≈mid≈max, 글리치=min0/max극단/z>0)
+            int zc = 0; for (int i = 0; i < SAMPLE_N; i++) if (sampleBuf[i] == 0) zc++;
+            BTPRINTF("  [RAW] min="); BTPRINT(sampleBuf[0]); BTPRINTF(" mid="); BTPRINT(sampleBuf[SAMPLE_N/2]);
+            BTPRINTF(" max="); BTPRINT(sampleBuf[SAMPLE_N-1]); BTPRINTF(" z="); BTPRINTLN(zc);
             float vsum = 0.0;
             for (int i = TRIM_N; i < SAMPLE_N - TRIM_N; i++)
                 vsum += ads.computeVolts(sampleBuf[i]) * 1000.0;
@@ -283,7 +348,9 @@ void loop() {
         sensors.requestTemperatures();
         float t = sensors.getTempCByIndex(0);
         if (t != DEVICE_DISCONNECTED_C && t > -10.0 && t < 85.0) temperature = t + tempOffset;
-        int16_t raw = ads.readADC_SingleEnded(0);
+        bool adsOk2;
+        int16_t raw = readADSsafe(&adsOk2);
+        if (!adsOk2) return;
         if (raw < 0) raw = 0;
         float v = ads.computeVolts(raw) * 1000.0;
         float p = nernstPH(ph.readPH(v, temperature), temperature);
