@@ -295,8 +295,8 @@ pythonw measure_kh_once.py
 ```json
 {
   "devices": {
-    "measure": { "port": "COM10", "mac": "98DA600FC57A", "desc": "측정기 HC-06" },
-    "doser":   { "port": "COM11", "mac": "98DA60056895", "desc": "도저 ca_reactor" }
+    "measure": { "port": "COM14", "mac": "98DA600FC57A", "desc": "측정기 HC-06" },
+    "doser":   { "port": "COM12", "mac": "98DA60056895", "desc": "도저 ca_reactor" }
   }
 }
 ```

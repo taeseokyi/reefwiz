@@ -172,6 +172,8 @@ dkh.dat 컬럼: `HH ref_pH tank_pH ref_kh(앵커 8.448) tank_kh temp`
 
 **운영:** 재발 시 `measure_kh.log`에 `[I2C] 물림→버스복구` / `[RAW] z>0` 로그 + 자가복구(8시간 침묵 없음). **근본 수정 = SDA/SCL 접점 재납땜**(펌웨어는 견디게만 함). BT 관점 트러블슈팅은 [bt-reconnect-and-testing.md](bt-reconnect-and-testing.md) 참조.
 
+**★7/25 실측 확인 (재플래시 후 첫 BT 읽기):** 폭기 분배기·도저 펌웨어 재플래시(롤오버 주기밀림 수정, 아래 코드버전 참조) 뒤 측정기 `tank`/`ref` 읽기전용 테스트 → `[RAW] min=11055 mid=11057 max=11058 z=0`(지터 3카운트 = 매우 안정, **z=0 = I2C 물림 0회**)·pH 7.642·T 27.9°C 정상. **신펌웨어 해피패스(`readADSsafe`·`[RAW]` 진단)가 실장치+BT에서 첫 작동 확인** — 단 실제 물림 복구(z>0·버스복구)와 전체 측정 시퀀스는 여전히 미발동(happy-path만). 같은 작업 중 **HC-06 GND 단선**(점검 중이었고 측정 중 아님)으로 COM14 오픈이 `세마포 만료`로 실패 → 선 재연결로 복구(도저 COM12는 내내 정상 = 동글·라디오 무관, 이 세 번째 시그니처는 [bt-reconnect-and-testing.md](bt-reconnect-and-testing.md) 참조).
+
 ## 코드 버전 정의
 
 | 버전 | git | 활성 기간 | 폭기 | 대상 | STABLE | CONV_EPS | 토폴로지(시퀀스) | 측정후 지속폭기(terminal ron) | 모터 |
