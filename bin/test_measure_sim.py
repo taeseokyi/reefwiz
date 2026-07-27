@@ -9,9 +9,9 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 24 시나리오 / 127 검증:
-  ── 정상/회복 12 시나리오(67 검증) ──
-    [1] 클린 calkh           (9) 전체 흐름·정확히 8회째 평탄·dKH·모터8종·재연결0
+총 24 시나리오 / 130 검증:
+  ── 정상/회복 12 시나리오(70 검증) ──
+    [1] 클린 calkh          (12) 전체 흐름·첫점(n=0)수집·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
     [3] 모터 드롭→정지·재송신(5) 재시도 시 mNs 정지 후 재송신(순서 m1f→m1s→m1f)
     [4] calref(--setref)     (6) ref dKH 역산 경로 견고성 + 수조 dKH=입력값
@@ -50,6 +50,7 @@ import contextlib
 
 import serial
 import measure_kh_once as mk
+import parse_plateau_log
 from firmware_sim import FirmwareSim, TANK_PH, REF_PH, DEFAULT_REF_DKH
 
 # ── 테스트 속도용 타이밍 패치(측정 의미는 불변) ──
@@ -68,6 +69,7 @@ mk.CLEANUP_RECOVERY_SECS = 1.0  # 비상정리 전제조건 회복 대기(2026-0
 mk.FLAT_MIN_N_TANK = 0          # 소스 실전값도 0(2026-07-23 제거, 사전폭기가 초기 lag 흡수) — [20](b)가 20 재패치로 원복 옵션 검증
 mk.PREAERATE_SECS  = {'tank': 0, 'ref': 0}   # 고정 사전폭기(2026-07-23): 시간만 0으로(사전폭기 호출 로직은 [23]이 검증)
 mk.SETTLE_SECS     = 0          # read 직전 정치(2026-07-23) 0으로 — airoff→read→ron 토글 로직은 그대로 돎
+mk.FIRST_POINT_AERATE_SECS = 0  # tank 첫 점(2026-07-27) 사전폭기 전 폭기 대기 — 실 60s 방지(첫 점 read 로직은 그대로 돎)
 
 EXPECT_TANK_DKH = DEFAULT_REF_DKH * (10 ** (-(REF_PH - TANK_PH)))   # ≈ 8.142
 MOTORS = ['m3b:68', 'm1f:70', 'm2f:60', 'm2b:68', 'm4f:60', 'm4b:70', 'm1b:82', 'm3f:60']
@@ -123,19 +125,28 @@ def scenario_clean():
         check("tank_kh 양수(평탄 도달)", tank_kh > 0, f"got {tank_kh}")
         check("ref_ph/tank_ph 일치", ref_ph == REF_PH and tank_ph == TANK_PH,
               f"ref={ref_ph} tank={tank_ph}")
-    check("tank 8회 측정(정확히 8회째 평탄)", sim.received.count('tank') == 8,
+    check("tank 9회 측정(첫점1 + 정확히 8회째 평탄)", sim.received.count('tank') == 9,
           f"got {sim.received.count('tank')}")
     check("ref 8회 측정", sim.received.count('ref') == 8, f"got {sim.received.count('ref')}")
     check("모터 8종 전부 수신", all(mm in sim.received for mm in MOTORS),
           f"received motors={[c for c in sim.received if c.startswith('m') and ':' in c]}")
     check("연결 1회(재연결 없음)", sim.connection_count == 1, f"got {sim.connection_count}")
     check("'calkh' 수신", 'calkh' in sim.received)
+    # ★첫 점(2026-07-27): 사전폭기 전 read 가 measure_kh.log 에 [tank] 0회 로 남아 평탄 파이프라인이 수집.
+    check("첫 점 로그 출력([tank] 0회)", '[tank] 0회 pH:' in out, "첫점 로그 없음")
+    _fake_log = "===== measure_kh_once V4 2026-07-27 05:00:00 =====\n" + out
+    _run = parse_plateau_log.parse_last_run(_fake_log)
+    check("파서가 첫 점을 tank[0](n=0)으로 수집",
+          bool(_run and _run['tank'] and _run['tank'][0]['n'] == 0),
+          f"tank[:1]={_run and _run.get('tank', [])[:1]}")
+    check("첫 점 elapsed=0", bool(_run and _run['tank'] and _run['tank'][0]['elapsed'] == 0),
+          f"tank[:1]={_run and _run.get('tank', [])[:1]}")
 
 
 # ── 시나리오 2: 측정 중 드롭 → 송신 전 점검이 재연결 ───────
 def scenario_drop_during_measure():
-    print("\n[2] tank 4회 응답 후 드롭 → 다음 측정 송신 전 ensure_link 가 재연결")
-    drops = [{'pat': 'tank', 'nth': 4, 'when': 'after'}]
+    print("\n[2] 평탄 4회 응답 후 드롭 → 다음 측정 송신 전 ensure_link 가 재연결")
+    drops = [{'pat': 'tank', 'nth': 5, 'when': 'after'}]   # nth=5 = 첫점1 + 평탄4회째
     result, out, sim = run(lambda ser: mk.run_measurement(ser), drops=drops)
     check("결과 튜플 완성", result is not None and all(v is not None for v in result),
           f"result={result}")
@@ -145,7 +156,7 @@ def scenario_drop_during_measure():
         check("tank_kh 양수(평탄 도달)", result[3] > 0)
     check("재연결 발생(연결 ≥2)", sim.connection_count >= 2, f"got {sim.connection_count}")
     check("'[RF]' 재연결 로그", '[RF]' in out)
-    check("tank 결국 8회 성공", sim.received.count('tank') == 8, f"got {sim.received.count('tank')}")
+    check("tank 결국 9회 성공(첫점1+평탄8)", sim.received.count('tank') == 9, f"got {sim.received.count('tank')}")
 
 
 # ── 시나리오 3: 모터 응답 중 드롭 → 재시도 시 정지(mNs) 후 재송신 ──
@@ -263,8 +274,8 @@ def scenario_motor_no_complete():
 
 def scenario_burst_recover():
     print("\n[8] 버스트(연속 2회 드롭) 후 회복 → 측정 완주")
-    drops = [{'pat': 'tank', 'nth': 3, 'when': 'after'},
-             {'pat': 'tank', 'nth': 4, 'when': 'after'}]
+    drops = [{'pat': 'tank', 'nth': 4, 'when': 'after'},   # 첫점1 포함 → 평탄3,4회째 후 연속 드롭
+             {'pat': 'tank', 'nth': 5, 'when': 'after'}]
     result, out, sim = run(lambda ser: mk.run_measurement(ser), drops=drops)
     check("결과 튜플 완성", result is not None and all(v is not None for v in result),
           f"result={result}")
@@ -272,7 +283,7 @@ def scenario_burst_recover():
         check("tank dKH ≈ 8.142(정확도 유지)", abs(result[3] - EXPECT_TANK_DKH) < 0.01,
               f"got {result[3]}")
     check("재연결 2회 이상", sim.connection_count >= 3, f"got {sim.connection_count}")
-    check("tank 결국 8회 성공", sim.received.count('tank') == 8, f"got {sim.received.count('tank')}")
+    check("tank 결국 9회 성공(첫점1+평탄8)", sim.received.count('tank') == 9, f"got {sim.received.count('tank')}")
 
 
 def scenario_inmeasure_retry():
@@ -280,14 +291,14 @@ def scenario_inmeasure_retry():
     # 'before' 드롭: tank #3 명령을 받고 응답 전 끊음 → 그 send 가 응답 미수신 →
     #   다음 시도에서 ensure_link 재연결 후 *같은 tank 재송신* → 성공(드롭 후 ensure_link
     #   사전점검이 아니라 send 내부 재시도 경로를 탄다). 시나리오 2(after 드롭)와 달리 tank 재송신 발생.
-    drops = [{'pat': 'tank', 'nth': 3, 'when': 'before'}]
+    drops = [{'pat': 'tank', 'nth': 4, 'when': 'before'}]   # 첫점1 포함 → 평탄3회째 before 드롭
     result, out, sim = run(lambda ser: mk.run_measurement(ser), drops=drops)
     check("결과 튜플 완성", result is not None and all(v is not None for v in result),
           f"result={result}")
     if result:
         check("tank dKH ≈ 8.142(회복)", abs(result[3] - EXPECT_TANK_DKH) < 0.01, f"got {result[3]}")
     check("재연결 발생(연결 ≥2)", sim.connection_count >= 2, f"got {sim.connection_count}")
-    check("드롭된 tank 재송신(9회=8+재송신1)", sim.received.count('tank') == 9,
+    check("드롭된 tank 재송신(10회=첫점1+평탄8+재송신1)", sim.received.count('tank') == 10,
           f"got {sim.received.count('tank')}")
     check("'[RF]' 재시도 로그", '[RF]' in out)
 
@@ -497,13 +508,15 @@ def scenario_dull_scurve():
     # 평형 접근은 지수(기울기∝진폭)라 저진폭 날은 lag 가 net8 창 감지한계 밑 → MIN_N 필요성 검증.
     lag  = [7.938, 7.939, 7.938, 7.938, 7.939, 7.938, 7.938, 7.938, 7.939, 7.938]
     fall = [round(7.938 - 0.003 * i, 3) for i in range(1, 14)]          # 7.935 → 7.899
-    profile = lag + fall + [7.898]                                       # 소진 후 7.898 유지(평형)
+    # ★첫 점(2026-07-27): 첫 점 read 가 tank_profile[0]을 소비하므로, 평탄 측정이 종전 S커브를
+    #   보도록 맨 앞에 더미 1개(lag 값) prepend — 첫 점이 이 더미를 먹고 평탄은 lag[0]부터 시작.
+    profile = [lag[0]] + lag + fall + [7.898]                            # [0]=첫점용 더미, 이후 종전 곡선
     false_dkh = DEFAULT_REF_DKH * (10 ** (-(REF_PH - 7.938)))            # lag 서 잠기면 ≈ 8.105 (과대)
     true_dkh  = DEFAULT_REF_DKH * (10 ** (-(REF_PH - 7.898)))            # 참평형 ≈ 7.392
 
     # (a) MIN_N=0 (도입 전 동작) — 8회째 lag 에서 false lock 재현(버그 문서화)
     result, out, sim = run(lambda ser: mk.run_measurement(ser), tank_profile=profile)
-    check("(a) lag 서 8회 false lock", sim.received.count('tank') == 8,
+    check("(a) lag 서 8회 false lock(+첫점1=9)", sim.received.count('tank') == 9,
           f"got {sim.received.count('tank')}")
     check("(a) 과대 dKH(≈false)", result is not None and result[3] is not None
           and abs(result[3] - false_dkh) < 0.01, f"got {result and result[3]} expect {false_dkh:.3f}")
@@ -559,13 +572,17 @@ def scenario_cleanup_precond():
         sim.stop(); sim2.stop()
         mk.PHASE_MAX_SECS, mk.CLEANUP_RECOVERY_SECS = pm_bak, cr_bak
     out = buf.getvalue()
+    # ★첫 점(2026-07-27): tank#1 kill 이면 첫 점 finally 의 재폭기 ensure_aeration_on 이 링크 사망
+    #   중이라 ★★[경고]를 남긴다(비상정리 전, 무해 — 본 측정이 링크 복구를 다시 기다림). KCl 복원
+    #   실패 경고와 구분하려 비상정리 구간(cleanup_out)만 본다.
+    cleanup_out = out.split('[비상정리]', 1)[-1]
     rcv = sim2.received
     def idx(cmd):
         return rcv.index(cmd) if cmd in rcv else -1
     check("(a) 전제조건 실패 → 링크 회복 대기 로그", '전제조건(airoff·ton) 실패' in out)
     check("(a) 모터는 전제조건 *이후*에만(ton < m2b:68 < m3f:60)",
           0 <= idx('ton') < idx('m2b:68') < idx('m3f:60'), f"rcv={rcv}")
-    check("(a) KCl 소크 복원(경고 없음)", 'm3f:60' in rcv and '★★[경고]' not in out,
+    check("(a) KCl 소크 복원(경고 없음)", 'm3f:60' in rcv and '★★[경고]' not in cleanup_out,
           f"rcv={rcv}")
     check("(a) 측정 자체는 에러 경로 유지(RuntimeError)", isinstance(raised, RuntimeError),
           f"raised={raised!r}")

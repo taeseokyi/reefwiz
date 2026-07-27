@@ -261,6 +261,31 @@
       <noscript><p class="chart-caption">그래프를 보려면 JavaScript를 켜야 합니다.</p></noscript>
     </section>
 
+    <section class="graph-card" id="tankPhCard">
+      <h2 class="card-title">🌊 수조 pH (첫 점) · 최근 14일</h2>
+      <div class="range-toggle" id="tankPhRangeToggle" role="group" aria-label="기간 선택">
+        <button type="button" class="range-btn" data-range="3">3일</button>
+        <button type="button" class="range-btn active" data-range="7">7일</button>
+        <button type="button" class="range-btn" data-range="all">전체</button>
+      </div>
+      <div class="range-toggle" id="tankPhCalToggle" role="group" aria-label="보정 선택">
+        <button type="button" class="range-btn active" data-cal="0">보정 없이</button>
+        <button type="button" class="range-btn" data-cal="1">🎯 한나 보정</button>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="tankPhChart"></canvas>
+      </div>
+      <p class="chart-caption" id="tankPhCaption">사전폭기 전에 측정한 수조 실제 pH에 가까운 첫 점입니다</p>
+      <div class="doser-manual">
+        <input type="number" id="hannaPhInput" min="6" max="9" step="0.01" inputmode="decimal"
+               placeholder="한나 실측 pH" aria-label="한나 실측 pH">
+        <button type="button" class="range-btn" id="hannaPhSave">보정 저장</button>
+      </div>
+      <input type="password" class="doser-pat" id="phCalPat" hidden
+             placeholder="GitHub 토큰 (이 기기 브라우저에만 저장)">
+      <p class="chart-caption" id="tankPhCalStatus"></p>
+    </section>
+
     <section class="graph-card">
       <h2 class="card-title">🔬 측정 과정 (평탄 추종) · 최근 14일</h2>
       <div class="run-picker" id="plateauRunPicker">
@@ -543,16 +568,21 @@
       let currentIdx = runs.length - 1; // 기본 = 최신 런
       let zoomed = false;
 
+      // n===0 = 첫 점(사전폭기 전, 관리용) — 진한 청록·큰 점으로 구분. n===flatN = 평탄 판정 = 초록.
       const mkPointColors = (arr, flatN, baseColor) =>
-        arr.map((p) => (p.n === flatN ? "#1f9e4d" : baseColor));
+        arr.map((p) => (p.n === 0 ? "#0d5a66" : p.n === flatN ? "#1f9e4d" : baseColor));
       const mkPointRadius = (arr, flatN) =>
-        arr.map((p) => (p.n === flatN ? 6 : 2.5));
+        arr.map((p) => (p.n === 0 ? 5 : p.n === flatN ? 6 : 2.5));
 
       // 확대 모드: 각 계열의 마지막 TAIL_N회만, 그 계열 자신의 마지막 시점을 0초로 잡아
       // (tank/ref 진행 시간이 서로 달라도) 종료 직전 구간만 정밀하게 비교할 수 있게 한다.
       const TAIL_N = 15;
+      // 첫 점(n===0)은 사전폭기(약 25분) *전*이라 phase 시작보다 훨씬 앞선 시점. 로그상 elapsed=0
+      // 이라 read#1 옆에 붙어 갭이 안 보이니, 전체 보기에선 고정 음수 x(-60)로 원점 왼쪽에 배치해
+      // "사전폭기 전"임을 암시한다. 확대(말미) 보기에선 tail 밖이라 자연 제외.
       const seriesPoints = (arr) => {
-        if (!zoomed || arr.length === 0) return arr.map((p) => ({ x: p.elapsed, y: p.ph, n: p.n }));
+        if (!zoomed || arr.length === 0)
+          return arr.map((p) => ({ x: p.n === 0 ? -60 : p.elapsed, y: p.ph, n: p.n }));
         const tail = arr.slice(-TAIL_N);
         const originShift = tail[tail.length - 1].elapsed;
         return tail.map((p) => ({ x: p.elapsed - originShift, y: p.ph, n: p.n }));
@@ -595,11 +625,14 @@
               legend: { position: "bottom", labels: { boxHeight: 6, font: { size: 11 } } },
               tooltip: {
                 callbacks: {
-                  title: (items) => items[0].dataset.label + " " + items[0].raw.n + "회",
+                  title: (items) =>
+                    items[0].dataset.label + " " +
+                    (items[0].raw.n === 0 ? "첫점(사전폭기 전)" : items[0].raw.n + "회"),
                   label: (item) => {
                     const flatN = item.dataset.label === "tank" ? d.tank_flat_n : d.ref_flat_n;
-                    const flat = item.raw.n === flatN ? " (평탄 판정)" : "";
-                    return "pH " + item.raw.y.toFixed(3) + " · " + item.raw.x + "s" + flat;
+                    const tag = item.raw.n === 0 ? " (사전폭기 전 첫점)"
+                      : item.raw.n === flatN ? " (평탄 판정)" : "";
+                    return "pH " + item.raw.y.toFixed(3) + " · " + item.raw.x + "s" + tag;
                   },
                 },
               },
@@ -658,6 +691,157 @@
         zoomed = btn.dataset.zoom === "1";
         showRun();
       });
+
+      // ── 🌊 수조 pH 시계열(첫 점, 사전폭기 전) + 한나 보정 ──
+      //    같은 plateau 이력(runs)에서 각 런의 tank[0](n=0=첫 점)을 뽑아 14일 시계열로 그린다
+      //    (중복 fetch 없음). 첫 점 도입(2026-07-27) 이전 런은 tank[0].n===1(첫 점 없음)이라
+      //    자동 제외 → "향후 측정분부터" 요구를 그대로 만족. 보정은 표시 전용(측정/펌웨어 무관).
+      (() => {
+        const MPD = 3; // 하루 측정 횟수(3/7일 슬라이스용 근사)
+        const tpAll = runs
+          .filter((r) => r.tank && r.tank.length && r.tank[0].n === 0)
+          .map((r) => ({ label: (r.run_started || "").slice(5, 16), ph: r.tank[0].ph }));
+        const capEl = document.getElementById("tankPhCaption");
+        const statusEl = document.getElementById("tankPhCalStatus");
+        if (!tpAll.length) {
+          capEl.textContent = "첫 점 수집 전입니다 — 다음 측정부터 자동으로 채워집니다";
+          document.querySelector("#tankPhCard .chart-wrap").style.display = "none";
+          document.getElementById("tankPhRangeToggle").style.display = "none";
+          document.getElementById("tankPhCalToggle").style.display = "none";
+          return;
+        }
+
+        let cur = tpAll;
+        const cal = { offset: 0, hanna_ph: null, anchor_tank_ph: null };
+        let calOn = localStorage.getItem("reefwiz_ph_cal_on") === "1";
+        document
+          .querySelectorAll("#tankPhCalToggle .range-btn")
+          .forEach((b) => b.classList.toggle("active", b.dataset.cal === (calOn ? "1" : "0")));
+
+        const yData = (arr) => arr.map((p) => (calOn ? p.ph + cal.offset : p.ph));
+        const anchorPh = () => tpAll[tpAll.length - 1].ph; // 가장 최근 첫 점값
+
+        const tpChart = new Chart(document.getElementById("tankPhChart"), {
+          type: "line",
+          data: {
+            labels: cur.map((p) => p.label),
+            datasets: [
+              {
+                label: "수조 pH(첫 점)",
+                data: yData(cur),
+                borderColor: "#0d5a66",
+                backgroundColor: "#0d5a66",
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                tension: 0.15,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (item) => "pH " + item.raw.toFixed(3) + (calOn ? " (한나 보정)" : ""),
+                },
+              },
+            },
+            scales: {
+              x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+              y: { title: { display: true, text: "pH" } },
+            },
+          },
+        });
+
+        const refreshCap = () => {
+          capEl.textContent =
+            calOn && cal.hanna_ph != null
+              ? "🎯 한나 보정 적용 중 (오프셋 " + (cal.offset >= 0 ? "+" : "") +
+                cal.offset.toFixed(3) + " · 한나 " + cal.hanna_ph.toFixed(2) +
+                " 기준) — 다음 보정 전까지 유지"
+              : "사전폭기 전에 측정한 수조 실제 pH에 가까운 첫 점입니다";
+        };
+        const redraw = () => {
+          tpChart.data.labels = cur.map((p) => p.label);
+          tpChart.data.datasets[0].data = yData(cur);
+          tpChart.update();
+          refreshCap();
+        };
+
+        document.getElementById("tankPhRangeToggle").addEventListener("click", (e) => {
+          const btn = e.target.closest(".range-btn");
+          if (!btn) return;
+          document
+            .querySelectorAll("#tankPhRangeToggle .range-btn")
+            .forEach((b) => b.classList.toggle("active", b === btn));
+          const range = btn.dataset.range;
+          cur = range === "all" ? tpAll : tpAll.slice(-Number(range) * MPD);
+          redraw();
+        });
+        document.getElementById("tankPhCalToggle").addEventListener("click", (e) => {
+          const btn = e.target.closest(".range-btn");
+          if (!btn) return;
+          calOn = btn.dataset.cal === "1";
+          localStorage.setItem("reefwiz_ph_cal_on", calOn ? "1" : "0");
+          document
+            .querySelectorAll("#tankPhCalToggle .range-btn")
+            .forEach((b) => b.classList.toggle("active", b === btn));
+          redraw();
+        });
+
+        // 저장된 한나 보정(ph_cal.json) 로드 → 오프셋 적용(없으면 404, 보정 없이)
+        fetch("ph_cal.json", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((c) => {
+            if (!c || typeof c.offset !== "number") return;
+            cal.offset = c.offset;
+            cal.hanna_ph = typeof c.hanna_ph === "number" ? c.hanna_ph : null;
+            cal.anchor_tank_ph = typeof c.anchor_tank_ph === "number" ? c.anchor_tank_ph : null;
+            redraw();
+          })
+          .catch(() => {});
+
+        // 한나 실측 pH 입력 → 오프셋 = 한나 − 가장 최근 첫 점값(앵커) 자동 계산·저장(calref 사용감)
+        document.getElementById("hannaPhSave").addEventListener("click", async () => {
+          const hanna = Math.round(parseFloat(document.getElementById("hannaPhInput").value) * 100) / 100;
+          if (!(hanna >= 6.0 && hanna <= 9.0)) {
+            statusEl.textContent = "한나 실측 pH를 6.0~9.0 범위로 입력하세요";
+            return;
+          }
+          const anchor = anchorPh();
+          const offset = Math.round((hanna - anchor) * 1000) / 1000;
+          const ok = await ghCommitJson(
+            PH_CAL_API,
+            {
+              offset,
+              hanna_ph: hanna,
+              anchor_tank_ph: anchor,
+              anchor_at: tpAll[tpAll.length - 1].label,
+              saved_at: new Date().toISOString(),
+            },
+            "config: tank pH 한나 보정 오프셋 " + offset + " (대시보드)",
+            statusEl,
+            document.getElementById("phCalPat")
+          );
+          if (ok) {
+            cal.offset = offset;
+            cal.hanna_ph = hanna;
+            cal.anchor_tank_ph = anchor;
+            calOn = true;
+            localStorage.setItem("reefwiz_ph_cal_on", "1");
+            document
+              .querySelectorAll("#tankPhCalToggle .range-btn")
+              .forEach((b) => b.classList.toggle("active", b.dataset.cal === "1"));
+            redraw();
+            statusEl.textContent =
+              "✅ 보정 저장됨: 오프셋 " + (offset >= 0 ? "+" : "") + offset.toFixed(3) +
+              " (한나 " + hanna.toFixed(2) + " − 최근 첫점 " + anchor.toFixed(3) + ")";
+          }
+        });
+      })();
     })
     .catch(() => {
       document.getElementById("plateauMeta").textContent = "불러오지 못했습니다";
@@ -768,10 +952,13 @@
     "https://api.github.com/repos/taeseokyi/reefwiz/contents/docs/doser_override.json";
   const DOSER_CFG_API =
     "https://api.github.com/repos/taeseokyi/reefwiz/contents/docs/doser_config.json";
+  // tank pH 한나 보정(표시 전용, 측정/펌웨어 무관) — 앵커 오프셋을 이 파일에 커밋.
+  const PH_CAL_API =
+    "https://api.github.com/repos/taeseokyi/reefwiz/contents/docs/ph_cal.json";
 
   // 공통 커밋 헬퍼: 성공 true. 진행/실패 문구는 statusEl 에 직접 쓴다.
-  async function ghCommitJson(api, obj, message, statusEl) {
-    const patEl = document.getElementById("doserPat");
+  async function ghCommitJson(api, obj, message, statusEl, patEl) {
+    patEl = patEl || document.getElementById("doserPat");
     const token = localStorage.getItem("reefwiz_pat") || patEl.value.trim();
     if (!token) {
       patEl.hidden = false;

@@ -111,6 +111,11 @@ MEAS_INTERVAL  = 30      # 측정 간 간격(초) — 이 구간엔 폭기 유�
 #   확인창' = 런별 elapsed[flat_n-8] 중앙값(tank≈1483s, ref≈205s)에서 채택.
 PREAERATE_SECS = {'tank': 1500, 'ref': 210}   # 측정 전 고정 사전폭기(초). tank 25분 / ref 3.5분
 SETTLE_SECS    = 10      # read 직전 airoff 후 정치(초) — 버블·전기 과도 소산 뒤 읽기
+# ── ★tank pH 첫 점(2026-07-27): 고정 사전폭기(25분) 진입 전, 짧게 폭기 후 정치 read = 수조 in-situ
+#   pH에 가까운 값(사전폭기로 CO₂ 탈기되기 전). 대시보드 tank pH 시계열·평탄 곡선 첫 점(관리용).
+#   본 측정(평탄 추종)과 별개이며 실패해도 본 측정에 영향 없음(격리). measure_kh.log 에 [tank] 0회
+#   형식으로만 남겨 기존 평탄 파이프라인(parse_plateau_log→dkh_plateau_history.json)이 자동 수집.
+FIRST_POINT_AERATE_SECS = 60   # 첫 점: 사전폭기 진입 전 폭기 시간(초). 이후 SETTLE_SECS 정치하고 read
 # ── ★무한 대기 방지 상한 ──
 PHASE_MAX_SECS = 5400    # phase별 최대 '측정' 시간(초)=90분(사전폭기 제외). 사전폭기(총 ~28.5분)가 phase
                          #   밖 추가분이라 7200이면 worst-case 총런 ~4h43m로 스케줄러 kill(5h) 근접 → 5400
@@ -798,6 +803,31 @@ def run_measurement(ser, tank_dkh=None):
         send(ser, 'airoff', stop_pattern='OFF')
         ensure_aeration_on(ser, 'tank 사전폭기')   # ★유실 시 25분 사전폭기 전체가 폭기 없이 흐름 → 확인 필수
         print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 동시)")
+
+        # ── [첫 점] tank pH 첫 값 — 고정 사전폭기 진입 전, 1분 폭기 후 10초 정치 read ──
+        #    수조 in-situ pH에 가까운 관리용 값(대시보드 시계열·평탄 첫 점). 본 측정과 별개라
+        #    실패해도 본 측정을 막지 않고(try/except), read 가 죽어도 25분 사전폭기 진입 전 폭기는
+        #    반드시 재점화한다(finally ensure_aeration_on — 무폭기 사전폭기 사고 방지).
+        try:
+            print(f"[첫점] tank 첫 점 — 사전폭기 전 {FIRST_POINT_AERATE_SECS}초 폭기 후 정치 read(관리용)")
+            keepalive_sleep(ser, FIRST_POINT_AERATE_SECS)   # 라인 799 에서 폭기 이미 ON
+            try:
+                send(ser, 'airoff', stop_pattern='OFF')     # read 직전 폭기 off(실패는 아래 read 가 판별)
+            except (serial.SerialException, OSError):
+                pass
+            keepalive_sleep(ser, SETTLE_SECS)               # 10초 정치(버블·전기 과도 소산)
+            _fp_lines = send(ser, 'tank', stop_pattern='[OK]', timeout=MEAS_READ_TIMEOUT)
+            _first_ph = parse_ph(_fp_lines, '수조수')
+            if _first_ph is not None:
+                # ★평탄 로그 형식(parse_plateau_log READING_RE)에 맞춰 tank[0](n=0)으로 편입
+                print(f"    [tank] 0회 pH:{_first_ph:.3f} (첫점 사전폭기전, 0s)")
+            else:
+                print("    [첫점] tank 첫 점 파싱 실패 — 첫 점 없이 본 측정 계속")
+        except (serial.SerialException, OSError) as e:
+            print(f"    [첫점] tank 첫 점 측정 실패({e}) — 첫 점 없이 본 측정 계속")
+        finally:
+            ensure_aeration_on(ser, 'tank 사전폭기(첫점 후 재폭기)')   # ★사전폭기 진입 전 폭기 재점화 필수
+
         _pt = PREAERATE_SECS['tank']
         print(f"[사전폭기] tank {_pt}초(≈{_pt/60:.1f}분) — 평형 도달용 고정 폭기(측정 전, 미측정)")
         keepalive_sleep(ser, _pt)                        # ★고정 사전폭기 — read 직전에만 off 하는 측정으로 진입
