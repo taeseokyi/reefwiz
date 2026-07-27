@@ -9,8 +9,8 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 24 시나리오 / 130 검증:
-  ── 정상/회복 12 시나리오(70 검증) ──
+총 25 시나리오 / 139 검증:
+  ── 정상/회복 13 시나리오(79 검증) ──
     [1] 클린 calkh          (12) 전체 흐름·첫점(n=0)수집·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
     [3] 모터 드롭→정지·재송신(5) 재시도 시 mNs 정지 후 재송신(순서 m1f→m1s→m1f)
@@ -23,6 +23,7 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [20] 무딘 S커브 MIN_N    (8) 저진폭 lag false lock 재현(a) + FLAT_MIN_N_TANK=20 시 참평형 도달·ref 미적용(b)
     [23] 사전폭기+폭기 토글   (5) 고정 사전폭기(tank1500/ref210s) 수행 + read 직전 airoff·샘플사이 ron 재폭기(2026-07-23)
     [24] ron 유실 대비        (5) 조용한 ron 응답 유실→(a)감지·reconnect·재송신 자가치유·정확도 유지 (b)지속 유실 시 유한 False+★★경고(2026-07-24)
+    [25] settime:HH 주입      (9) 런당 1회 송신·펌웨어 시각 보관·calkh '시각:HH' 표기 / 응답 유실 시 경고만 남기고 측정 완주(2026-07-27)
   ── 예외 12 시나리오(60 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
@@ -783,6 +784,39 @@ def scenario_ron_loss():
         mk.read_until = saved_ru
 
 
+def scenario_settime():
+    print("\n[25] settime:HH 주입 — 펌웨어 '시각:' 표기·이력 (2026-07-27)")
+    from datetime import datetime as _dt
+    # (a) 정상: 런 시작에 settime 이 나가고 펌웨어(sim)가 시를 보관 → calkh 블록이 ?? 대신 실제 시.
+    result, out, sim = run(lambda ser: mk.run_measurement(ser))
+    hh = f"{_dt.now().hour:02d}"     # 런이 자정을 넘기면 어긋날 수 있으나 테스트는 초 단위라 무해
+    check("settime:HH 송신", f'settime:{hh}' in sim.received,
+          f"received[:3]={sim.received[:3]}")
+    check("송신은 런당 1회", sum(1 for c in sim.received if c.startswith('settime:')) == 1,
+          f"got {[c for c in sim.received if c.startswith('settime:')]}")
+    check("펌웨어가 시각 보관", sim.hour == _dt.now().hour, f"sim.hour={sim.hour}")
+    check("calkh 블록 '시각:HH'(?? 아님)", f'시각:{hh}' in out and '시각:??' not in out)
+    check("settime 경고 없음", 'settime' not in out or '[경고] settime' not in out)
+    check("측정 정확도 무영향", result is not None and abs(result[3] - EXPECT_TANK_DKH) < 0.01,
+          f"result={result}")
+
+    # (b) 응답 유실: 시각은 부가정보 → 경고만 남기고 본 측정은 그대로 완주해야 한다.
+    saved_ru = mk.read_until
+    def fast_ru(ser, pat, timeout, keepalive=False):
+        return saved_ru(ser, pat, min(timeout, 0.3), keepalive=keepalive)
+    mk.read_until = fast_ru
+    try:
+        result2, out2, sim2 = run(lambda ser: mk.run_measurement(ser),
+                                  no_reply={'settime': 999})
+        check("응답 유실 시 경고 출력", '[경고] settime' in out2, "경고 미출력")
+        check("응답 유실에도 측정 완주",
+              result2 is not None and abs(result2[3] - EXPECT_TANK_DKH) < 0.01,
+              f"result={result2}")
+        check("응답 유실 시 표기는 ??", '시각:??' in out2, "?? 표기 아님")
+    finally:
+        mk.read_until = saved_ru
+
+
 def main():
     print("=" * 56)
     print("measure_kh_once 통합 테스트 (firmware_sim)")
@@ -814,6 +848,7 @@ def main():
     scenario_cleanup_state()
     scenario_preaerate_toggle()
     scenario_ron_loss()
+    scenario_settime()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
     print("=" * 56)

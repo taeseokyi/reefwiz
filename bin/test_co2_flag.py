@@ -13,6 +13,7 @@
   [5] doser_adjust 접미 정렬·제외 — k 오프셋, 폴백, 인덱스 간격 보존, 가드
   [6] 스모크 — 실제 docs/dkh_series.json + data/dkh.dat 로 정렬 성립
   [7] plan_lrt — 0=정지(lrt 0)·(0,1.5)→하한·범위 클램프 (2026-07-24 수동 정지)
+  [8] compute 정지(0) 유지 가드 — 멈춘 도저 자동 재가동 금지·양수 경로 회귀 (2026-07-27)
 
 테스트 패치는 전부 in-memory(모듈 변수 교체·인자 주입)만 사용 — 소스 실전 상수 불변.
 """
@@ -382,6 +383,34 @@ def test_plan_lrt():
     check("왕복 6.0→8000→6.0", doser_adjust.lrt_to_ml_day(pl(6.0)[0]) == 6.0)
 
 
+# ------------------------------------------------- [8] compute 정지(0) 유지 가드 (2026-07-27)
+def test_compute_stop_guard():
+    print("\n[8] compute 정지(0) 유지 — 멈춘 도저를 자동 경로가 재가동하지 않는다")
+    comp = doser_adjust.compute
+
+    # 실제 사례: 정지(lrt 0) + dKH 7.90(목표 7.2 초과) → 종전엔 LRT_MIN 에 끌려 2000ms 권고
+    r_hi = comp(7.90, +0.04, 0, target=7.2)
+    check("정지 상태 + 목표 초과 → lrt 0 유지", r_hi["new_lrt"] == 0, str(r_hi))
+    check("정지 유지 note", any("정지(0) 유지" in n for n in r_hi["notes"]), str(r_hi["notes"]))
+    check("목표 초과면 재개 검토 note 없음",
+          not any("재개 검토" in n for n in r_hi["notes"]), str(r_hi["notes"]))
+
+    # 목표 미만으로 내려간 경우: 값은 여전히 0 유지, 사람이 볼 정보성 note 만 추가
+    r_lo = comp(6.90, -0.02, 0, target=7.2)
+    check("정지 상태 + 목표 미만 → 그래도 lrt 0", r_lo["new_lrt"] == 0, str(r_lo))
+    check("목표 미만이면 재개 검토 note", any("재개 검토" in n for n in r_lo["notes"]),
+          str(r_lo["notes"]))
+    check("계산 근거 필드 보존", r_lo["error"] > 0 and "delta_ml" in r_lo, str(r_lo))
+
+    # 양수 lrt 경로는 종전 동작 그대로(회귀 방지) — 스텝 캡·하한 유지
+    r_cur = comp(7.90, +0.04, 2700, target=7.2)
+    check("lrt 2700 + 목표 초과 → 하한 2000ms(종전과 동일)", r_cur["new_lrt"] == 2000, str(r_cur))
+    check("양수 경로 하한 note 유지", any("하한" in n for n in r_cur["notes"]), str(r_cur["notes"]))
+    r_up = comp(6.50, -0.02, 8000, target=7.2)
+    check("lrt 8000 + 목표 미달 → 증량(스텝 ±30% 안)",
+          8000 < r_up["new_lrt"] <= 10400, str(r_up))
+
+
 def main():
     test_classify()
     test_retro()
@@ -390,6 +419,7 @@ def main():
     test_doser()
     test_smoke()
     test_plan_lrt()
+    test_compute_stop_guard()
     print(f"\n결과: {_passed} PASS / {_failed} FAIL")
     sys.exit(1 if _failed else 0)
 

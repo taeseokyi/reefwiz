@@ -19,6 +19,9 @@
   (사용자 지정 상한 3배=원액 18mL/일) / 변화 200ms 미만은 스킵(데드밴드·EEPROM 마모).
   ※자동 조정은 이 레일 안에서만 움직인다(정지 불가). 정지(lrt 0)는 대시보드 수동 설정
   0mL/일로만 가능(plan_lrt). gap(lgt)은 어느 경로에서도 건드리지 않는다.
+  ★정지(0) 유지(2026-07-27): 이미 lrt 0 이면 자동 경로는 0 을 그대로 둔다. 종전에는
+  스텝 캡(0×30%=0)에 걸린 값이 LRT_MIN 하한에 끌려 올라가 "멈춘 도저 재가동" 권고가
+  나왔다. 재개는 대시보드 수동 설정으로만(compute 의 정지 가드).
 - ★CO₂ 편향 의심 제외(2026-07-13): 새벽 실내 CO₂ 축적으로 dKH가 −0.07~−0.24 낮게
   나오는 측정(판정=ref 곡선 형태, parse_plateau_log.classify_co2_suspect 단일 소스)을
   추세·수준 계산에서 제외한다. 플래그는 GitHub 의 docs/dkh_series.json(co2_suspect
@@ -239,6 +242,23 @@ def compute(level, slope, cur_lrt, target=TARGET_DKH):
     delta_ml = delta_rate / SENS                      # 원액 mL/일
     cur_ml = lrt_to_ml_day(cur_lrt)
     raw_lrt = ml_day_to_lrt(cur_ml + delta_ml)
+
+    # ★정지(0) 유지 가드(2026-07-27): lrt 0 = 대시보드에서 의도적으로 멈춘 상태(plan_lrt 의 "정지").
+    #   아래 step_cap = 0*0.30 = 0 이라 어느 방향으로도 못 움직이는데, 그 0 을 LRT_MIN 하한이
+    #   2000ms 로 끌어올려 "멈춘 도저를 재가동" 하는 권고가 나왔다(7/25~7/27 로그, dKH 는 목표보다
+    #   0.7 높은 상황). 자동 경로는 0 을 건드리지 않는다 — 재개는 대시보드 수동 설정으로만.
+    if cur_lrt == 0:
+        notes = ["정지(0) 유지 — 재개는 수동 설정으로만"]
+        if error > 0:                     # 목표보다 낮음 = 재개 검토 신호(정보성, 적용 아님)
+            notes.append("목표 미만 — 재개 검토 필요")
+        return {
+            "error": round(error, 3),
+            "desired_rate": round(desired_rate, 4),
+            "delta_rate": round(delta_rate, 4),
+            "delta_ml": round(delta_ml, 1),
+            "new_lrt": 0,
+            "notes": notes,
+        }
 
     notes = []
     step_cap = cur_lrt * STEP_MAX_FRAC

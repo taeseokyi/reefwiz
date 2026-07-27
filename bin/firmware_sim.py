@@ -43,6 +43,7 @@ class FirmwareSim:
         self.tank_meas_done = False
         self.ref_meas_done = False
         self.kh_hist = 0
+        self.hour = None            # settime:HH 로 주입된 시(없으면 표기 '??' — 펌웨어와 동일)
         # 관측용
         self.received = []          # 수신한 모든 명령(빈 줄 keepalive 제외)
         self.connection_count = 0   # accept 횟수(=최초연결+재연결)
@@ -154,6 +155,10 @@ class FirmwareSim:
             try: self._srv.close()
             except Exception: pass
 
+    def _ts(self):
+        """펌웨어 getTimeStr 모방 — settime 전이면 '??', 후엔 두 자리 시(경과 시간 가산은 생략)."""
+        return '??' if self.hour is None else f'{self.hour:02d}'
+
     # ── 명령별 응답(펌웨어 충실 모방) ───────────────────────
     def respond(self, cmd):
         # 모터 구동: mNf:초 / mNb:초 → [MN] 방향 초 + [모터N] 완료 (즉시)
@@ -197,6 +202,14 @@ class FirmwareSim:
                     '  샘플링: 16/64', '  샘플링: 32/64', '  샘플링: 48/64', '  샘플링: 64/64',
                     '  [RAW] min=11072 mid=11073 max=11074 z=0',   # ★신펌웨어 진단줄(호스트 파싱 무영향 검증)
                     val, '[OK]']
+        # settime:HH → 시각(시) 주입. 펌웨어 executeOneCmd 와 동일한 응답/범위(0~23).
+        m = re.match(r'settime:(\d+)$', cmd)
+        if m:
+            h = int(m.group(1))
+            if 0 <= h <= 23:
+                self.hour = h
+                return [f'[OK] 시각(시): {h:02d}']
+            return ['[ERR] settime:HH (0~23)']
         # setref:x → refDKH 설정
         m = re.match(r'setref:([\d.]+)$', cmd)
         if m:
@@ -212,7 +225,7 @@ class FirmwareSim:
             delta = self.ref_ph - self.tank_ph
             tank_dkh = self.ref_dkh * math.pow(10.0, -delta)
             self.kh_hist += 1
-            return ['===[dKH]===', '  시각:??',
+            return ['===[dKH]===', f'  시각:{self._ts()}',
                     f'  참조pH:{self.ref_ph:.3f}', f'  수조pH:{self.tank_ph:.3f}',
                     f'  dPH:{delta:.4f}',
                     f'  refKH:{self.ref_dkh:.3f} dKH', f'  수조KH:{tank_dkh:.3f} dKH',
@@ -226,7 +239,7 @@ class FirmwareSim:
             delta = self.tank_ph - self.ref_ph
             new_ref = known * math.pow(10.0, -delta)
             self.ref_dkh = new_ref
-            return ['===[calref]===', '  시각:??',
+            return ['===[calref]===', f'  시각:{self._ts()}',
                     f'  참조pH:{self.ref_ph:.3f}', f'  수조pH:{self.tank_ph:.3f}',
                     f'  dPH:{delta:.4f}',
                     f'  새refDKH:{new_ref:.3f} dKH', f'  수조dKH:{known:.3f} dKH',
@@ -236,7 +249,7 @@ class FirmwareSim:
         if cmd == 'status':
             tp = self.tank_ph if self.tank_ph is not None else 0.0
             rp = self.ref_ph if self.ref_ph is not None else 0.0
-            return ['=== 상태 ===', '시각:??',
+            return ['=== 상태 ===', f'시각:{self._ts()}',
                     f'온도:{TEMP:.1f}C 오프셋:0.00 보정T:25.0C',
                     f'수조pH:{tp:.3f}', f'참조pH:{rp:.3f}', f'dPH:{(rp-tp):.4f}',
                     f'refKH:{self.ref_dkh:.3f} dKH', f'수조KH:0.000 dKH',

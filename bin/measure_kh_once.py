@@ -530,6 +530,23 @@ def _move_liquid(ser, motor_idx, cmd, chamber_after, holding_after):
     return lines
 
 
+def _sync_firmware_hour(ser):
+    """펌웨어 시계(시 단위)를 호스트 시각에 맞춘다 — 표기·이력 전용, 측정값과 무관(2026-07-27).
+
+    펌웨어는 settime:HH 로 받은 시에 millis 경과분을 더해 표시하므로(getTimeStr) 런마다
+    갱신하면 calkh 출력 블록과 펌웨어 내부 KH 이력(khHist[].timestamp)의 '시각:' 이
+    '??' 대신 실제 시로 남는다(장치에서 직접 이력을 볼 때 회차 구분용).
+    ★실패는 경고만 — 부가정보라 본 측정을 막지 않는다(첫 점 read 와 같은 non-fatal 정책)."""
+    hour = datetime.now().hour
+    try:
+        lines = send(ser, f'settime:{hour:02d}', stop_pattern='시각(시)', timeout=5)
+    except (serial.SerialException, OSError) as e:
+        print(f"    [경고] settime 실패({e}) — 시각 표기만 ?? 로 남습니다(측정은 진행)")
+        return
+    if not any('[OK]' in ln for ln in lines):
+        print("    [경고] settime 응답 미확인 — 시각 표기만 ?? 로 남습니다(측정은 진행)")
+
+
 # ─────────────────────────────────────────────
 # 평형(plateau) 추종 측정 — 정수 milli-pH 윈도우 span
 # ─────────────────────────────────────────────
@@ -764,6 +781,9 @@ def run_measurement(ser, tank_dkh=None):
     # ★진행 상태 초기화(2026-07-10): 런 시작 = 직전 런이 남긴 KCl 소크 상태.
     _liquid['chamber'], _liquid['holding'] = 'KCL', 'EMPTY'
     try:
+        # ── 시각 주입: 펌웨어 '시각:' 표기·KH 이력용(측정값 무관, 실패해도 진행) ──
+        _sync_firmware_hour(ser)
+
         # ── calref 모드: 수조 실측 dKH 를 setref 로 기록(측정 전 즉시 검증) ──
         #    범위(0.5~30.0) 밖이거나 응답 이상이면 긴 측정 전에 바로 실패시킨다.
         if calref:
