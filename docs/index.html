@@ -792,8 +792,12 @@
           redraw();
         });
 
-        // 저장된 한나 보정(ph_cal.json) 로드 → 오프셋 적용(없으면 404, 보정 없이)
-        fetch("ph_cal.json", { cache: "no-store" })
+        // 저장된 한나 보정 로드 → 오프셋 적용(없으면 보정 없이). doser_config 프리필과 동일하게
+        // GitHub raw API 로 읽어 커밋 즉시 반영(Pages 재배포를 안 기다림 → 새로고침/타 기기도 바로). 404=미설정.
+        fetch(PH_CAL_API + "?ref=master", {
+          headers: { Accept: "application/vnd.github.raw+json" },
+          cache: "no-store",
+        })
           .then((r) => (r.ok ? r.json() : null))
           .then((c) => {
             if (!c || typeof c.offset !== "number") return;
