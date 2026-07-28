@@ -44,6 +44,9 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
              ⑤모터는 재시도 시 먼저 정지(mNs) 후 재송신 → 미전달이든 진행중이든 중복 구동 방지.
     calkh·calref(--setref) 모두 같은 send()/measure_until_flat 를 타므로 동일 적용.
   - ★규칙: 액체 이동(mXf/mXb) 직전 airoff. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
+    ★폭기 명령은 양방향 모두 응답을 확인한다 — ron=ensure_aeration_on(2026-07-24),
+    airoff=ensure_aeration_off(2026-07-28). send() 가 응답 미수신을 조용히 리턴하므로
+    확인 없이는 유실이 무흔적(read 노이즈·이송 무효)이 된다. 흐름은 안 바꾸고 ★★경고만 남긴다.
   - 오류/비정상 종료 시 비상 정리(_safe_cleanup): 에어 OFF + 챔버 배출/회수 + KCl 소크 복원.
     ★전제조건 우선(2026-07-10): airoff·ton 실패 시 CLEANUP_RECOVERY_SECS 까지 링크 회복을
     기다려 전제조건부터 재시도, 끝내 실패하면 모터 생략(밀폐계라 이송 무효 — 7/9 21시 실증).
@@ -440,6 +443,56 @@ def ensure_aeration_on(ser, where=''):
     return False
 
 
+def ensure_aeration_off(ser, where='', swallow=True):
+    """★airoff(폭기 OFF) 송신·'OFF' 확인 — ensure_aeration_on 의 대칭(2026-07-28).
+    미확인이면 reconnect 후 1회 재확인, 그래도 미확인이면 False 반환.
+    ★★[경고]는 '링크 생존인데 응답만 유실'(=조용한 유실)에만 올린다 — 링크 사망은 이미
+    [RF]·링크 사망 경로가 크게 남기므로 겹쳐 내지 않는다(경고 1건=1가지 뜻으로 고정).
+    ※ ensure_aeration_on(ron)은 링크 사망에도 ★★를 내는 기존 동작 유지 — 2026-07-24 배포
+      이후 검증된 채로 두고, 통일은 별건으로 판단(한 번에 하나씩 원칙).
+
+    배경: ron 방향은 2026-07-24 에 응답 확인을 붙였으나 airoff 방향은 반환값을 아무도 안 봐서,
+    send() 가 SEND_RETRY_MAX 회 재시도 후에도 'OFF' 를 못 받고 조용히 리턴하면 흔적이 없었다.
+    유실이 남기는 결과는 호출 지점에 따라 다르다:
+      • read 직전 유실 → 폭기 켜진 채 read = 기포기 모터 노이즈·버블 산란(구 스킴 품질로 하락).
+        시료는 폭기로 평형이 유지되던 상태라 화학적 편향이 아니라 산포 증가이고, 트림평균과
+        평탄 게이트가 대부분 걸러낸다 — 그래도 [RAW] 스프레드가 넓어지므로 가시화가 진단에 필요.
+      • 액체 이동 직전 유실 → 밀폐계라 이송이 무효인데 모터 '완료' 는 정상 수신 = 거짓 성공
+        (7/9 21시 사고와 같은 실패 모드). 흐름은 바꾸지 않고 경고만 남긴다 — 이송 중단·동결로
+        승격할지는 별건(경고 누적을 보고 판단).
+
+    swallow=True(기본)면 통신 예외도 삼켜 측정을 중단시키지 않는다(best-effort). 호출부가
+    링크 사망을 자체 except 로 처리하는 정리 구간은 swallow=False 로 기존 예외 흐름을 보존한다.
+    확인 문자열은 send() 의 stop_pattern 과 같은 'OFF' 로 둔다(판정 기준 이원화 방지)."""
+    tag = f" ({where})" if where else ''
+    for attempt in (1, 2):
+        try:
+            lines = send(ser, 'airoff', stop_pattern='OFF')
+        except (serial.SerialException, OSError):
+            if not swallow:
+                raise
+            lines = []
+        if any('OFF' in ln for ln in (lines or [])):
+            return True
+        if attempt == 1:
+            print(f"    [RF] airoff 미확인{tag} → 재연결 후 재확인")
+            try:
+                reconnect(ser, f"airoff 미확인{tag}")
+            except (serial.SerialException, OSError):
+                if not swallow:
+                    raise
+    # ★★경고는 '조용한 유실'(링크 생존인데 응답만 유실)에만 올린다. 링크가 죽어 있으면 그 사실이
+    #   이미 [RF]·링크 사망 경로에 크게 남고 호출부가 별도로 처리하므로(호스트 구제·비상정리),
+    #   여기서 ★★를 겹쳐 내면 "프로브가 KCl 없이 방치" 같은 실제 조치 신호와 구분이 흐려진다.
+    #   → ★★[경고] airoff = "링크는 멀쩡한데 폭기 상태를 확신할 수 없다" 한 가지 뜻으로 고정.
+    if ensure_link(ser):
+        print(f"    ★★[경고] airoff 최종 미확인{tag} — 링크 생존·응답만 유실 → 폭기 켜진 채"
+              " 진행 가능성(read 노이즈 / 액체 이동 무효 주의)")
+    else:
+        print(f"    [RF] airoff 미확인{tag} — 링크 사망(호출부의 링크 사망 경로가 처리)")
+    return False
+
+
 def _motor_index(cmd):
     """'m1f:70'/'m2b:68' → 1/2. 모터 구동 명령이 아니면 None."""
     m = re.match(r'm([1-4])[fb]:', cmd)
@@ -583,11 +636,9 @@ def measure_until_flat(ser, what):
     while True:
         n += 1
         # ★read 직전(2026-07-23): 기포기 모터 노이즈 차단 — 폭기 끄고 SETTLE_SECS 정치 후 읽는다.
-        #   airoff 실패는 무시(링크 문제면 바로 아래 read 가 링크 사망 판별로 처리, 폭기는 다음 샘플서 정상화).
-        try:
-            send(ser, 'airoff', stop_pattern='OFF')
-        except (serial.SerialException, OSError):
-            pass
+        #   ★airoff 유실 감지(2026-07-28): 링크 문제면 바로 아래 read 가 링크 사망 판별로 처리하지만,
+        #   '응답만 유실 + read 는 성공' 인 좁은 창에서는 폭기 켜진 채 read 가 나가므로 확인·경고한다.
+        ensure_aeration_off(ser, f'{what} read 직전')
         keepalive_sleep(ser, SETTLE_SECS)              # airoff 후 정치(버블·전기 과도 소산)
         try:
             lines = send(ser, what, stop_pattern='[OK]', timeout=MEAS_READ_TIMEOUT)
@@ -809,7 +860,7 @@ def run_measurement(ser, tank_dkh=None):
         #    ★배관(2026-06-20): m1=본수조↔홀딩, m2=홀딩↔측정챔버, m4=참조수(5L)↔측정챔버, m3=KCl↔측정챔버.
         #    ★측정 순서 = tank 먼저 → ref 나중. 이유: 5L 위즈수조가 *동시 폭기*돼 ref 가 tank 측정 내내
         #      5L서 co-aeration → ref 차례엔 이미 평형 근처 → ref 측정이 빠름.
-        send(ser, 'airoff', stop_pattern='OFF')
+        ensure_aeration_off(ser, '준비 이송 전(액체 이동)')
         send(ser, 'ton', stop_pattern='수조ON')
         print("\n[준비] KCl 배출 (측정 챔버)")
         _move_liquid(ser, 3, 'm3b:68', 'EMPTY', 'EMPTY')
@@ -820,7 +871,7 @@ def run_measurement(ser, tank_dkh=None):
 
         # ── [A] 폭기 ON (측정챔버 tank + 5L 위즈수조 동시) — tank 평탄까지 측정 ──
         #    이 동안 ref(5L)는 동시 폭기로 평형에 도달 → [B] ref 측정이 빨라짐(co-aeration).
-        send(ser, 'airoff', stop_pattern='OFF')
+        ensure_aeration_off(ser, 'tank 사전폭기 진입 전(ton 해제)')   # ★유실 시 ton(PWM)이 측정 내내 ON
         ensure_aeration_on(ser, 'tank 사전폭기')   # ★유실 시 25분 사전폭기 전체가 폭기 없이 흐름 → 확인 필수
         print("\n[폭기] ON (측정챔버 tank + 5L 위즈수조 동시)")
 
@@ -831,10 +882,7 @@ def run_measurement(ser, tank_dkh=None):
         try:
             print(f"[첫점] tank 첫 점 — 사전폭기 전 {FIRST_POINT_AERATE_SECS}초 폭기 후 정치 read(관리용)")
             keepalive_sleep(ser, FIRST_POINT_AERATE_SECS)   # 라인 799 에서 폭기 이미 ON
-            try:
-                send(ser, 'airoff', stop_pattern='OFF')     # read 직전 폭기 off(실패는 아래 read 가 판별)
-            except (serial.SerialException, OSError):
-                pass
+            ensure_aeration_off(ser, '첫점 read 직전')      # ★유실 시 폭기 켜진 채 첫점 read(관리용 값 노이즈)
             keepalive_sleep(ser, SETTLE_SECS)               # 10초 정치(버블·전기 과도 소산)
             _fp_lines = send(ser, 'tank', stop_pattern='[OK]', timeout=MEAS_READ_TIMEOUT)
             _first_ph = parse_ph(_fp_lines, '수조수')
@@ -859,7 +907,7 @@ def run_measurement(ser, tank_dkh=None):
         # ── 전이(빠른 측정 우선): tank 를 홀딩에 *임시 파킹* → 즉시 ref 이송 ──
         #    ★tank 완전배출(본수조) 대신 홀딩으로 빠르게 비우고 바로 ref 채움 → ref 측정 조기 시작.
         #      (파킹된 tank 수는 ref 측정 후 마무리 배출.)
-        send(ser, 'airoff', stop_pattern='OFF')          # ★액체 이동 전 airoff (기포기 off)
+        ensure_aeration_off(ser, 'ref 이송 전(액체 이동)')   # ★액체 이동 전 airoff (기포기 off) — 유실 시 이송 무효
         send(ser, 'ton', stop_pattern='수조ON')
         print("\n[tank] 측정챔버 → 홀딩 임시 파킹 (m2 역방향)")
         _move_liquid(ser, 2, 'm2b:68', 'EMPTY', 'TANK')
@@ -868,7 +916,7 @@ def run_measurement(ser, tank_dkh=None):
 
         # ── [B] 폭기 ON (측정챔버 ref + 5L 위즈수조 동시) — ref 평탄까지 측정 ──
         #    ref 는 5L서 내내 co-aeration 됐으므로 평형 근처서 시작 → 빨리 끝남.
-        send(ser, 'airoff', stop_pattern='OFF')
+        ensure_aeration_off(ser, 'ref 사전폭기 진입 전(ton 해제)')   # ★유실 시 ton(PWM)이 측정 내내 ON
         ensure_aeration_on(ser, 'ref 사전폭기')   # ★유실 시 사전폭기가 폭기 없이 흐름 → 확인 필수
         print("\n[폭기] ON (측정챔버 ref + 5L 위즈수조 동시)")
         _pr = PREAERATE_SECS['ref']
@@ -882,7 +930,9 @@ def run_measurement(ser, tank_dkh=None):
         #    calref 모드는 calkh 대신 calref 호출(ref dKH 역산·EEPROM 저장).
         #    ★calkh 모드는 링크 사망을 예외로 죽이지 않는다(2026-07-03) — 아래 호스트 구제로 진행.
         try:
-            send(ser, 'airoff', stop_pattern='OFF')   # ★측정 종료 즉시 OFF → 이후 calkh·정리 이동은 전부 에어 OFF(액체 이동 규칙)
+            # ★측정 종료 즉시 OFF → 이후 calkh·정리 이동은 전부 에어 OFF(액체 이동 규칙).
+            #   swallow=False: 링크 사망은 기존대로 바로 예외 → 아래 except 의 호스트 구제 경로 보존.
+            ensure_aeration_off(ser, '측정 종료(calkh·정리 이동 전)', swallow=False)
             if calref:
                 print("\n[calref] ref dKH 역산·저장")
                 kh_lines = send(ser, 'calref', stop_pattern='refDKH 저장', timeout=10)
@@ -929,7 +979,8 @@ def run_measurement(ser, tank_dkh=None):
             _move_liquid(ser, 1, 'm1b:82', 'EMPTY', 'EMPTY')
             print("\n[정리] KCl 공급 (프로브 소크)")
             kcl_lines = _move_liquid(ser, 3, 'm3f:60', 'KCL', 'EMPTY')
-            send(ser, 'airoff', stop_pattern='OFF')
+            # swallow=False: 링크 사망은 기존대로 예외 → 아래 except 가 link_lost(음수 표식) 처리.
+            ensure_aeration_off(ser, '정리 완료', swallow=False)
             if not _motor_ok(kcl_lines, 3):
                 # KCl 소크가 조용히 실패(타임아웃/무응답)하면 측정값이 멀쩡해도 에러로 본다
                 # → finally 의 _safe_cleanup 이 한 번 더 KCl 시도, main 은 0.0 기록.

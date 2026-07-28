@@ -24,6 +24,8 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [23] 사전폭기+폭기 토글   (5) 고정 사전폭기(tank1500/ref210s) 수행 + read 직전 airoff·샘플사이 ron 재폭기(2026-07-23)
     [24] ron 유실 대비        (5) 조용한 ron 응답 유실→(a)감지·reconnect·재송신 자가치유·정확도 유지 (b)지속 유실 시 유한 False+★★경고(2026-07-24)
     [25] settime:HH 주입      (9) 런당 1회 송신·펌웨어 시각 보관·calkh '시각:HH' 표기 / 응답 유실 시 경고만 남기고 측정 완주(2026-07-27)
+    [26] airoff 유실 대비     (6) [24]의 대칭 — 조용한 airoff 응답 유실→(a)감지·자가치유·정확도 유지
+                                  (b)지속 유실 시 유한 False+★★경고 (c)swallow=False 는 링크 사망을 올려보냄(2026-07-28)
   ── 예외 12 시나리오(60 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
@@ -784,6 +786,41 @@ def scenario_ron_loss():
         mk.read_until = saved_ru
 
 
+def scenario_airoff_loss():
+    print("\n[26] airoff(폭기 OFF) 유실 대비 — 감지·자가치유·경고 (2026-07-28)")
+    # [24] ron 의 대칭. sim 은 폭기→pH 결합이 없어 '유실→read 노이즈'는 재현 불가 →
+    # 감지·자가치유·비행(non-hang)·로깅과 "흐름은 안 바뀐다(완주·정확도 유지)"를 검증한다.
+    saved_ru = mk.read_until
+    def fast_ru(ser, pat, timeout, keepalive=False):
+        return saved_ru(ser, pat, min(timeout, 0.3), keepalive=keepalive)
+    mk.read_until = fast_ru
+    try:
+        # (a) 자가치유: 첫 airoff(준비 이송 전)의 send 3시도 응답을 전부 생략 → 감지→reconnect→재송신 복구.
+        result, out, sim = run(lambda ser: mk.run_measurement(ser),
+                              no_reply={'airoff': mk.SEND_RETRY_MAX})
+        check("airoff 유실 감지·재확인 로그", 'airoff 미확인' in out, "out에 'airoff 미확인' 없음")
+        check("자가치유(최종 경고 없음)", '★★[경고] airoff' not in out, "예상외 최종 ★★[경고] airoff")
+        check("자가치유 후 정확도 유지",
+              result is not None and result[3] is not None and abs(result[3] - EXPECT_TANK_DKH) < 0.01,
+              f"result={result}")
+        # (b) 지속 유실(단위): airoff 응답 영구 생략 → 유한 시간에 False + ★★[경고](측정을 막지 않음).
+        ok, out2, _ = run(lambda ser: mk.ensure_aeration_off(ser, '단위'), no_reply={'airoff': 999})
+        check("지속 유실 시 False 반환(유한·non-hang)", ok is False, f"ok={ok}")
+        check("지속 유실 시 ★★[경고] 로깅", '★★[경고] airoff' in out2, "경고 미출력")
+        # (c) swallow=False: 링크 사망 시 예외를 삼키지 않아야 한다(호스트 구제·link_lost 경로 보존).
+        raised = []
+        def _probe(ser):
+            try:
+                mk.ensure_aeration_off(ser, '단위(swallow=False)', swallow=False)
+            except (serial.SerialException, OSError):
+                raised.append(True)
+            return None
+        run(_probe, drops=[{'pat': 'airoff', 'nth': 1, 'when': 'before', 'kill': True}])
+        check("swallow=False 는 링크 사망을 올려보냄", bool(raised), "예외가 삼켜짐")
+    finally:
+        mk.read_until = saved_ru
+
+
 def scenario_settime():
     print("\n[25] settime:HH 주입 — 펌웨어 '시각:' 표기·이력 (2026-07-27)")
     from datetime import datetime as _dt
@@ -848,6 +885,7 @@ def main():
     scenario_cleanup_state()
     scenario_preaerate_toggle()
     scenario_ron_loss()
+    scenario_airoff_loss()
     scenario_settime()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")
