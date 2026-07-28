@@ -24,8 +24,10 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
     [23] 사전폭기+폭기 토글   (5) 고정 사전폭기(tank1500/ref210s) 수행 + read 직전 airoff·샘플사이 ron 재폭기(2026-07-23)
     [24] ron 유실 대비        (5) 조용한 ron 응답 유실→(a)감지·reconnect·재송신 자가치유·정확도 유지 (b)지속 유실 시 유한 False+★★경고(2026-07-24)
     [25] settime:HH 주입      (9) 런당 1회 송신·펌웨어 시각 보관·calkh '시각:HH' 표기 / 응답 유실 시 경고만 남기고 측정 완주(2026-07-27)
-    [26] airoff 유실 대비     (6) [24]의 대칭 — 조용한 airoff 응답 유실→(a)감지·자가치유·정확도 유지
+    [26] airoff 유실 대비     (7) [24]의 대칭 — 조용한 airoff 응답 유실→(a)감지·자가치유(단위)+런 완주
                                   (b)지속 유실 시 유한 False+★★경고 (c)swallow=False 는 링크 사망을 올려보냄(2026-07-28)
+    [27] 이송 전제조건 필수   (8) 액체 이동 전 airoff·ton 확인 없으면 모터 금지 — (a)순간 유실은 재시도로
+                                  흡수·완주 (b)끝내 미확인이면 모터 0회+경고+에러(거짓 성공 원천 차단)(2026-07-28)
   ── 예외 12 시나리오(60 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
@@ -69,6 +71,7 @@ mk.LINK_PING_TIMEOUT = 0.3     # ensure_link/reconnect 핑 대기 단축
 mk.FAIL_MAX        = 2          # 예외 시나리오에서 빨리 phase 실패(백스톱 경로 검증)
 mk.LINK_RETRY_INTERVAL = 0.5    # 링크 사망 끈질긴 대기(2026-07-03) 재접속 간격 단축
 mk.CLEANUP_RECOVERY_SECS = 1.0  # 비상정리 전제조건 회복 대기(2026-07-10) 단축 — [21]이 개별 재패치
+mk.MOVE_PRECOND_RECOVERY_SECS = 1.0  # 본 흐름 이송 전제조건 회복 대기(2026-07-28) 단축 — [27]이 검증
 mk.FLAT_MIN_N_TANK = 0          # 소스 실전값도 0(2026-07-23 제거, 사전폭기가 초기 lag 흡수) — [20](b)가 20 재패치로 원복 옵션 검증
 mk.PREAERATE_SECS  = {'tank': 0, 'ref': 0}   # 고정 사전폭기(2026-07-23): 시간만 0으로(사전폭기 호출 로직은 [23]이 검증)
 mk.SETTLE_SECS     = 0          # read 직전 정치(2026-07-23) 0으로 — airoff→read→ron 토글 로직은 그대로 돎
@@ -782,6 +785,12 @@ def scenario_ron_loss():
         ok, out2, _ = run(lambda ser: mk.ensure_aeration_on(ser, '단위'), no_reply={'ron': 999})
         check("지속 유실 시 False 반환(유한·non-hang)", ok is False, f"ok={ok}")
         check("지속 유실 시 ★★[경고] 로깅", '★★[경고]' in out2, "경고 미출력")
+        # (c) ★★ 게이팅 통일(2026-07-28): 링크 사망은 별도 경로가 처리 → ron 도 ★★ 안 냄.
+        ok3, out3, _ = run(lambda ser: mk.ensure_aeration_on(ser, '단위'),
+                           drops=[{'pat': 'ron', 'nth': 1, 'when': 'before', 'kill': True}])
+        check("(c) 링크 사망 시 ★★ 없음(airoff 와 통일)", ok3 is False and '★★' not in out3,
+              f"ok3={ok3} out3={out3[-120:]!r}")
+        check("(c) 링크 사망은 [RF] 로만 남김", '링크 사망' in out3, "링크 사망 표기 없음")
     finally:
         mk.read_until = saved_ru
 
@@ -795,12 +804,18 @@ def scenario_airoff_loss():
         return saved_ru(ser, pat, min(timeout, 0.3), keepalive=keepalive)
     mk.read_until = fast_ru
     try:
-        # (a) 자가치유: 첫 airoff(준비 이송 전)의 send 3시도 응답을 전부 생략 → 감지→reconnect→재송신 복구.
+        # (a) 자가치유(단위): send 3시도 응답을 전부 생략 → 감지→reconnect→재송신으로 복구.
+        #   ※ 런 전체로 걸면 첫 airoff 를 이송 전제조건(_cleanup_precond, [27])이 먼저 먹으므로
+        #     헬퍼 자체의 자가치유는 단위로 검증하고, 런 차원은 아래 (a2)에서 완주로 본다.
+        ok1, out1, _ = run(lambda ser: mk.ensure_aeration_off(ser, '단위'),
+                           no_reply={'airoff': mk.SEND_RETRY_MAX})
+        check("airoff 유실 감지·재확인 로그", 'airoff 미확인' in out1, "out1에 'airoff 미확인' 없음")
+        check("자가치유 성공(True 반환)", ok1 is True, f"ok1={ok1}")
+        check("자가치유(최종 경고 없음)", '★★[경고] airoff' not in out1, "예상외 최종 ★★[경고] airoff")
+        # (a2) 런 차원: 순간 airoff 유실이 있어도 전제조건 재시도가 흡수해 완주·정확도 유지.
         result, out, sim = run(lambda ser: mk.run_measurement(ser),
                               no_reply={'airoff': mk.SEND_RETRY_MAX})
-        check("airoff 유실 감지·재확인 로그", 'airoff 미확인' in out, "out에 'airoff 미확인' 없음")
-        check("자가치유(최종 경고 없음)", '★★[경고] airoff' not in out, "예상외 최종 ★★[경고] airoff")
-        check("자가치유 후 정확도 유지",
+        check("(a2) 순간 유실에도 완주·정확도 유지",
               result is not None and result[3] is not None and abs(result[3] - EXPECT_TANK_DKH) < 0.01,
               f"result={result}")
         # (b) 지속 유실(단위): airoff 응답 영구 생략 → 유한 시간에 False + ★★[경고](측정을 막지 않음).
@@ -817,6 +832,53 @@ def scenario_airoff_loss():
             return None
         run(_probe, drops=[{'pat': 'airoff', 'nth': 1, 'when': 'before', 'kill': True}])
         check("swallow=False 는 링크 사망을 올려보냄", bool(raised), "예외가 삼켜짐")
+    finally:
+        mk.read_until = saved_ru
+
+
+def scenario_move_precond():
+    print("\n[27] 액체 이동 전제조건(airoff·ton) 필수 — 거짓 성공 원천 차단 (2026-07-28)")
+    # 사용자 지시 "거짓 성공은 있으면 안 된다". 밀폐계라 airoff·ton 없이 모터를 돌리면 액체는
+    # 안 움직이는데 모터 '완료' 는 정상으로 온다(7/9 21시 실증) → 확인 못 하면 돌리지 않는다.
+    saved_ru = mk.read_until
+    def fast_ru(ser, pat, timeout, keepalive=False):
+        return saved_ru(ser, pat, min(timeout, 0.3), keepalive=keepalive)
+    mk.read_until = fast_ru
+    try:
+        # (a) 순간 유실은 재시도로 흡수 — 첫 ton 응답 3회 생략 → 재확인 성공 → 정상 완주.
+        result, out, sim = run(lambda ser: mk.run_measurement(ser),
+                              no_reply={'ton': mk.SEND_RETRY_MAX})
+        check("(a) 전제조건 미확인 감지 로그", '[이송 전제조건]' in out, "감지 로그 없음")
+        check("(a) 재시도로 확인됨", '확인됨' in out, "회복 로그 없음")
+        check("(a) 이송 진행(모터 정상 송신)", any(c in sim.received for c in MOTORS),
+              f"received={sim.received[:6]}")
+        check("(a) 정확도 유지(완주)",
+              result is not None and result[3] is not None and abs(result[3] - EXPECT_TANK_DKH) < 0.01,
+              f"result={result}")
+
+        # (b) 지속 미확인(준비 이송) → 모터 0회 + 경고 + 에러 종료. 거짓 성공('완료' 로그) 없음.
+        sim2 = FirmwareSim()
+        sim2.no_reply = {'ton': 999}
+        port = sim2.start(); time.sleep(0.1)
+        ser2 = open_ser(port); time.sleep(0.1); ser2.reset_input_buffer()
+        buf = io.StringIO(); raised = None
+        try:
+            with contextlib.redirect_stdout(buf):
+                mk.run_measurement(ser2)
+        except Exception as e:
+            raised = e
+        finally:
+            try: ser2.close()
+            except Exception: pass
+            sim2.stop()
+        out2 = buf.getvalue()
+        check("(b) 끝내 미확인 시 ★★경고", '★★[경고] 이송 전제조건' in out2, "경고 미출력")
+        check("(b) 모터 명령 송신 0회(거짓 성공 없음)",
+              not any(c.startswith('m') and ':' in c for c in sim2.received),
+              f"received={sim2.received}")
+        check("(b) 모터 '완료' 로그 없음", '] 완료' not in out2, "거짓 성공 로그 잔존")
+        check("(b) 에러로 종료(이송 생략)", isinstance(raised, RuntimeError) and '거짓 성공 방지' in str(raised),
+              f"raised={raised!r}")
     finally:
         mk.read_until = saved_ru
 
@@ -886,6 +948,7 @@ def main():
     scenario_preaerate_toggle()
     scenario_ron_loss()
     scenario_airoff_loss()
+    scenario_move_precond()
     scenario_settime()
     print("\n" + "=" * 56)
     print(f"결과: {_passed} PASS / {_failed} FAIL")

@@ -46,7 +46,13 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
   - ★규칙: 액체 이동(mXf/mXb) 직전 airoff. ron=에어(D12)·ton=PWM(D13) 독립, airoff=둘 다 OFF.
     ★폭기 명령은 양방향 모두 응답을 확인한다 — ron=ensure_aeration_on(2026-07-24),
     airoff=ensure_aeration_off(2026-07-28). send() 가 응답 미수신을 조용히 리턴하므로
-    확인 없이는 유실이 무흔적(read 노이즈·이송 무효)이 된다. 흐름은 안 바꾸고 ★★경고만 남긴다.
+    확인 없이는 유실이 무흔적(read 노이즈·이송 무효)이 된다. ★★경고는 '링크 생존인데 응답만
+    유실'(조용한 유실)에만 — 링크 사망은 별도 경로가 이미 크게 남긴다(양쪽 규칙 동일).
+    ★★이송 전제조건 필수(2026-07-28, 사용자 지시 "거짓 성공은 있으면 안 된다"):
+    본 흐름의 액체 이동 3곳(준비·ref 이송·정리 이송)도 비상정리와 같이 ensure_move_precond 로
+    airoff+ton 응답을 확인해야 모터를 돌린다. 미확인이면 MOVE_PRECOND_RECOVERY_SECS 까지
+    재접속·재시도하고, 끝내 미확인이면 모터를 생략한다(헛도는 이송+'완료' 로그=거짓 성공 방지).
+    준비·ref 이송은 에러 종료, 정리 이송은 측정값을 음수 표식으로 살리고 비상정리에 맡긴다.
   - 오류/비정상 종료 시 비상 정리(_safe_cleanup): 에어 OFF + 챔버 배출/회수 + KCl 소크 복원.
     ★전제조건 우선(2026-07-10): airoff·ton 실패 시 CLEANUP_RECOVERY_SECS 까지 링크 회복을
     기다려 전제조건부터 재시도, 끝내 실패하면 모터 생략(밀폐계라 이송 무효 — 7/9 21시 실증).
@@ -147,6 +153,10 @@ LINK_RETRY_INTERVAL = 60         # 링크 사망 시 재접속 시도 간격(초
 #   액체가 안 움직인다('완료' 응답≠이송 성공 — 라인 건조로 확인). 전제조건 실패(링크 사망) 시
 #   아래 상한까지 재접속을 기다려 전제조건부터 재시도한다. 폭기 유지 상태라 기다려도 무해.
 CLEANUP_RECOVERY_SECS = 1800     # 비상정리 전제조건(airoff·ton) 실패 시 링크 회복 대기 상한(초)
+# ★본 흐름 이송 전제조건(2026-07-28, 사용자 지시 "거짓 성공은 있으면 안 된다"): 액체 이동 직전
+#   airoff·ton 응답이 확인 안 되면 이송이 무효인데 모터 '완료'는 정상으로 와서 거짓 성공이 된다.
+#   비상정리와 같은 원칙으로 이 상한까지 재접속·재시도하고, 끝내 미확인이면 모터를 생략한다.
+MOVE_PRECOND_RECOVERY_SECS = 1800
 # ★진행 상태 추적(2026-07-10, 사용자 원칙 "복원은 진행 지점 판단이 선행"): 비상정리가 올바른
 #   레시피를 고르려면 액체가 어디 있는지 알아야 한다. 액체 이동(_move_liquid) 성공 시점마다
 #   갱신하고, 이동 도중 실패(전달/이송량 불명)면 UNKNOWN — 이후 성공해도 확신은 복구되지
@@ -439,7 +449,14 @@ def ensure_aeration_on(ser, where=''):
                 reconnect(ser, f"ron 재폭기 미확인{tag}")
             except (serial.SerialException, OSError):
                 pass
-    print(f"    ★★[경고] ron 재폭기 최종 미확인{tag} — 폭기 꺼진 채 진행 가능성(측정 신뢰도 주의)")
+    # ★★경고 게이팅 통일(2026-07-28, 사용자 지시): ensure_aeration_off 와 같은 규칙 —
+    #   '링크 생존인데 응답만 유실'(조용한 유실)에만 ★★를 올린다. 링크 사망은 이미 [RF]·링크 사망
+    #   경로가 크게 남기므로 겹쳐 내면 실제 조치 신호(프로브 KCl 방치 등)와 구분이 흐려진다.
+    if ensure_link(ser):
+        print(f"    ★★[경고] ron 재폭기 최종 미확인{tag} — 링크 생존·응답만 유실 → 폭기 꺼진 채"
+              " 진행 가능성(측정 신뢰도 주의)")
+    else:
+        print(f"    [RF] ron 재폭기 미확인{tag} — 링크 사망(호출부의 링크 사망 경로가 처리)")
     return False
 
 
@@ -448,8 +465,7 @@ def ensure_aeration_off(ser, where='', swallow=True):
     미확인이면 reconnect 후 1회 재확인, 그래도 미확인이면 False 반환.
     ★★[경고]는 '링크 생존인데 응답만 유실'(=조용한 유실)에만 올린다 — 링크 사망은 이미
     [RF]·링크 사망 경로가 크게 남기므로 겹쳐 내지 않는다(경고 1건=1가지 뜻으로 고정).
-    ※ ensure_aeration_on(ron)은 링크 사망에도 ★★를 내는 기존 동작 유지 — 2026-07-24 배포
-      이후 검증된 채로 두고, 통일은 별건으로 판단(한 번에 하나씩 원칙).
+    ensure_aeration_on(ron)도 같은 규칙으로 통일했다(2026-07-28, 사용자 지시).
 
     배경: ron 방향은 2026-07-24 에 응답 확인을 붙였으나 airoff 방향은 반환값을 아무도 안 봐서,
     send() 가 SEND_RETRY_MAX 회 재시도 후에도 'OFF' 를 못 받고 조용히 리턴하면 흔적이 없었다.
@@ -490,6 +506,43 @@ def ensure_aeration_off(ser, where='', swallow=True):
               " 진행 가능성(read 노이즈 / 액체 이동 무효 주의)")
     else:
         print(f"    [RF] airoff 미확인{tag} — 링크 사망(호출부의 링크 사망 경로가 처리)")
+    return False
+
+
+def ensure_move_precond(ser, where, recovery_secs=None):
+    """★액체 이동 전제조건(airoff+ton) 확인 — 확인되면 True, 끝내 미확인이면 False(사용자 지시
+    2026-07-28 "거짓 성공은 있으면 안 된다"). 호출부는 False 면 모터를 돌리지 않는다.
+
+    밀폐 공통 헤드스페이스라 airoff·ton 없이 모터를 돌리면 액체가 안 움직이는데 모터 '완료'
+    응답은 정상으로 온다 = 거짓 성공(7/9 21시 실증: m2b·m1b·m3f 전부 헛돌아 KCl 소크 미복원인데
+    로그는 '완료'). 비상정리는 2026-07-10 에 이 원칙을 이미 갖췄으나(_cleanup_precond) 본 흐름의
+    이송 3곳은 전제조건 응답을 아무도 확인하지 않아 같은 실패 모드가 남아 있었다.
+
+    미확인이 곧 실패는 아니다 — RF 응답 유실이면 재시도로 회복된다. 폭기 유지 중 대기는 무해
+    (프로브는 KCl/시료에 젖은 채, 모터 정지)라는 기존 원칙대로 RECOVERY 상한까지 재접속·재시도한다
+    → 순간 유실은 흡수하고, 진짜 불능일 때만 False 를 반환해 이송을 막는다."""
+    if recovery_secs is None:
+        recovery_secs = MOVE_PRECOND_RECOVERY_SECS
+    if _cleanup_precond(ser):
+        return True
+    deadline = time.time() + recovery_secs
+    print(f"    ★[이송 전제조건] airoff·ton 미확인 ({where}) — 이송하면 거짓 성공이 되므로 "
+          f"확인될 때까지 대기(최대 {recovery_secs}s, {LINK_RETRY_INTERVAL}s 간격 재시도)")
+    while time.time() < deadline:
+        time.sleep(min(LINK_RETRY_INTERVAL, max(0.05, deadline - time.time())))
+        reconnect(ser, f"이송 전제조건 재시도 ({where})")
+        if _cleanup_precond(ser):
+            print(f"    [이송 전제조건] 확인됨 ({where}) — 이송 진행")
+            return True
+    # 모터 생략은 어느 쪽이든 확정. ★★ 승격은 ensure_aeration_on/off 와 같은 규칙 —
+    #   '링크 생존인데 응답만 유실'(조용한 유실)에만. 링크 사망은 이미 [RF]·링크 사망 경로가
+    #   크게 남기고, KCl 미복원이 실제로 발생하면 _safe_cleanup 이 ★★로 조치를 요구한다.
+    if ensure_link(ser):
+        print(f"    ★★[경고] 이송 전제조건(airoff·ton) 끝내 미확인 ({where}) — 링크 생존·응답만"
+              " 유실 → 모터 생략(헛도는 이송+거짓 성공 로그 방지)")
+    else:
+        print(f"    [RF] 이송 전제조건 미확인 ({where}) — 링크 사망 → 모터 생략"
+              "(헛도는 이송+거짓 성공 로그 방지)")
     return False
 
 
@@ -860,8 +913,10 @@ def run_measurement(ser, tank_dkh=None):
         #    ★배관(2026-06-20): m1=본수조↔홀딩, m2=홀딩↔측정챔버, m4=참조수(5L)↔측정챔버, m3=KCl↔측정챔버.
         #    ★측정 순서 = tank 먼저 → ref 나중. 이유: 5L 위즈수조가 *동시 폭기*돼 ref 가 tank 측정 내내
         #      5L서 co-aeration → ref 차례엔 이미 평형 근처 → ref 측정이 빠름.
-        ensure_aeration_off(ser, '준비 이송 전(액체 이동)')
-        send(ser, 'ton', stop_pattern='수조ON')
+        if not ensure_move_precond(ser, '준비 이송'):
+            # 모터를 돌리면 헛돌며 '완료'만 남는다(거짓 성공) → 이송하지 않고 에러로 끝낸다.
+            # 챔버는 직전 런의 KCl 소크 상태 그대로라 프로브는 안전(비상정리도 모터 0회).
+            raise RuntimeError("준비 이송 전제조건(airoff·ton) 미확인 — 이송 생략(거짓 성공 방지)")
         print("\n[준비] KCl 배출 (측정 챔버)")
         _move_liquid(ser, 3, 'm3b:68', 'EMPTY', 'EMPTY')
         print("\n[tank] 본수조수 → 홀딩 (m1)")
@@ -907,8 +962,10 @@ def run_measurement(ser, tank_dkh=None):
         # ── 전이(빠른 측정 우선): tank 를 홀딩에 *임시 파킹* → 즉시 ref 이송 ──
         #    ★tank 완전배출(본수조) 대신 홀딩으로 빠르게 비우고 바로 ref 채움 → ref 측정 조기 시작.
         #      (파킹된 tank 수는 ref 측정 후 마무리 배출.)
-        ensure_aeration_off(ser, 'ref 이송 전(액체 이동)')   # ★액체 이동 전 airoff (기포기 off) — 유실 시 이송 무효
-        send(ser, 'ton', stop_pattern='수조ON')
+        if not ensure_move_precond(ser, 'ref 이송'):
+            # tank 측정은 끝났지만 이송이 무효면 ref 측정 자체가 성립하지 않는다(챔버에 tank 수가
+            # 그대로 남아 'ref' 를 읽으면 tank 값을 ref 로 오인 = 조용한 오측정). 이송·측정 모두 포기.
+            raise RuntimeError("ref 이송 전제조건(airoff·ton) 미확인 — 이송 생략(거짓 성공 방지)")
         print("\n[tank] 측정챔버 → 홀딩 임시 파킹 (m2 역방향)")
         _move_liquid(ser, 2, 'm2b:68', 'EMPTY', 'TANK')
         print("\n[ref] 참조수 5L → 측정 챔버 (m4) — 동시폭기로 이미 평형 근처")
@@ -971,28 +1028,37 @@ def run_measurement(ser, tank_dkh=None):
         #    ★정리 중 링크 사망(calkh 모드)은 예외로 죽이지 않는다(2026-07-03) — 측정 데이터는
         #      이미 온전하므로 음수 표식으로 결과만 살리고, 비상정리는 finally 에 맡긴다.
         link_lost = False
-        try:
-            send(ser, 'ton', stop_pattern='수조ON')
-            print("\n[정리] 참조수 측정챔버 → 5L 위즈수조 회수 (m4 역방향)")
-            _move_liquid(ser, 4, 'm4b:70', 'EMPTY', 'TANK')   # 5L↔측정챔버 호스가 길어 역방향 +10(60→70)으로 완전 회수
-            print("\n[정리] 파킹된 수조수 홀딩 → 본수조 마무리 배출 (m1 역방향)")
-            _move_liquid(ser, 1, 'm1b:82', 'EMPTY', 'EMPTY')
-            print("\n[정리] KCl 공급 (프로브 소크)")
-            kcl_lines = _move_liquid(ser, 3, 'm3f:60', 'KCL', 'EMPTY')
-            # swallow=False: 링크 사망은 기존대로 예외 → 아래 except 가 link_lost(음수 표식) 처리.
-            ensure_aeration_off(ser, '정리 완료', swallow=False)
-            if not _motor_ok(kcl_lines, 3):
-                # KCl 소크가 조용히 실패(타임아웃/무응답)하면 측정값이 멀쩡해도 에러로 본다
-                # → finally 의 _safe_cleanup 이 한 번 더 KCl 시도, main 은 0.0 기록.
-                #   (★링크 생존 상태의 실패 = 장비 문제 → 0.0 래치 유지가 맞다)
-                raise RuntimeError("KCl 소크(m3f) 미완료 — 프로브 소크 실패 → 에러(0.0) 기록")
-            completed = True
-        except (serial.SerialException, OSError):
+        # ★이송 전제조건 우선(2026-07-28): 확인 안 되면 모터를 돌리지 않는다 — 돌리면 헛돌며
+        #   '완료'만 남아 거짓 성공이 된다. 측정 데이터는 이미 온전하므로 링크 사망과 같은 취급
+        #   (음수 표식)으로 결과만 살리고, KCl 소크 복원은 finally 비상정리(자체 전제조건 대기)에 맡긴다.
+        if not ensure_move_precond(ser, '정리 이송'):
             if calref:
-                raise
+                raise RuntimeError("정리 이송 전제조건(airoff·ton) 미확인 — 이송 생략(거짓 성공 방지)")
+            print("★★[정리] 이송 전제조건(airoff·ton) 미확인 — 정상 정리 생략(거짓 성공 방지). "
+                  "측정 데이터는 온전 → 음수 표식으로 기록, KCl 소크는 비상정리·수동 확인 필요")
             link_lost = True
-            print("★★[RF] 링크 사망 — 정상 정리 미완료(비상정리는 finally 재시도, KCl 소크 수동 확인 필요). "
-                  "측정 데이터는 온전 → 음수 표식으로 기록")
+        if not link_lost:                 # 전제조건 미확인이면 정리 모터를 아예 돌리지 않는다
+            try:
+                print("\n[정리] 참조수 측정챔버 → 5L 위즈수조 회수 (m4 역방향)")
+                _move_liquid(ser, 4, 'm4b:70', 'EMPTY', 'TANK')   # 5L↔측정챔버 호스가 길어 역방향 +10(60→70)으로 완전 회수
+                print("\n[정리] 파킹된 수조수 홀딩 → 본수조 마무리 배출 (m1 역방향)")
+                _move_liquid(ser, 1, 'm1b:82', 'EMPTY', 'EMPTY')
+                print("\n[정리] KCl 공급 (프로브 소크)")
+                kcl_lines = _move_liquid(ser, 3, 'm3f:60', 'KCL', 'EMPTY')
+                # swallow=False: 링크 사망은 기존대로 예외 → 아래 except 가 link_lost(음수 표식) 처리.
+                ensure_aeration_off(ser, '정리 완료', swallow=False)
+                if not _motor_ok(kcl_lines, 3):
+                    # KCl 소크가 조용히 실패(타임아웃/무응답)하면 측정값이 멀쩡해도 에러로 본다
+                    # → finally 의 _safe_cleanup 이 한 번 더 KCl 시도, main 은 0.0 기록.
+                    #   (★링크 생존 상태의 실패 = 장비 문제 → 0.0 래치 유지가 맞다)
+                    raise RuntimeError("KCl 소크(m3f) 미완료 — 프로브 소크 실패 → 에러(0.0) 기록")
+                completed = True
+            except (serial.SerialException, OSError):
+                if calref:
+                    raise
+                link_lost = True
+                print("★★[RF] 링크 사망 — 정상 정리 미완료(비상정리는 finally 재시도, KCl 소크 수동 확인 필요). "
+                      "측정 데이터는 온전 → 음수 표식으로 기록")
 
         # ── 파싱·출력 ──
         ref_ph_r, tank_ph_r, ref_kh, tank_kh, temp = parse_results(kh_lines, calref=calref)
