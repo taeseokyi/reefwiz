@@ -700,7 +700,12 @@
         const MPD = 3; // 하루 측정 횟수(3/7일 슬라이스용 근사)
         const tpAll = runs
           .filter((r) => r.tank && r.tank.length && r.tank[0].n === 0)
-          .map((r) => ({ label: (r.run_started || "").slice(5, 16), ph: r.tank[0].ph }));
+          .map((r) => ({
+            label: (r.run_started || "").slice(5, 16),
+            ph: r.tank[0].ph,
+            co2_suspect: !!r.co2_suspect,
+            ref_net_mph: r.ref_net_mph,
+          }));
         const capEl = document.getElementById("tankPhCaption");
         const statusEl = document.getElementById("tankPhCalStatus");
         if (!tpAll.length) {
@@ -720,6 +725,9 @@
 
         const yData = (arr) => arr.map((p) => (calOn ? p.ph + cal.offset : p.ph));
         const anchorPh = () => tpAll[tpAll.length - 1].ph; // 가장 최근 첫 점값
+        // 포인트 색: 경도 그래프와 동일한 규칙 — CO₂ 편향 의심(주황) vs 정상(청록).
+        // 평탄 미도달(경도의 빨강)은 여기 해당 없음: 첫 점은 사전폭기 전 1회 읽기라 평탄 판정과 무관.
+        const tpColor = (p) => (p.co2_suspect ? "#e08a2c" : "#0d5a66");
 
         const tpChart = new Chart(document.getElementById("tankPhChart"), {
           type: "line",
@@ -731,6 +739,8 @@
                 data: yData(cur),
                 borderColor: "#0d5a66",
                 backgroundColor: "#0d5a66",
+                pointBackgroundColor: cur.map(tpColor),
+                pointBorderColor: cur.map(tpColor),
                 pointRadius: 3,
                 pointHoverRadius: 5,
                 tension: 0.15,
@@ -745,7 +755,11 @@
               legend: { display: false },
               tooltip: {
                 callbacks: {
-                  label: (item) => "pH " + item.raw.toFixed(3) + (calOn ? " (한나 보정)" : ""),
+                  label: (item) =>
+                    "pH " + item.raw.toFixed(3) + (calOn ? " (한나 보정)" : "") +
+                    (cur[item.dataIndex] && cur[item.dataIndex].co2_suspect
+                      ? " (새벽 CO₂ 편향 의심)"
+                      : ""),
                 },
               },
             },
@@ -767,6 +781,9 @@
         const redraw = () => {
           tpChart.data.labels = cur.map((p) => p.label);
           tpChart.data.datasets[0].data = yData(cur);
+          // 기간 토글로 cur 이 바뀌면 색 배열도 같이 갱신해야 점-색 정렬이 어긋나지 않는다.
+          tpChart.data.datasets[0].pointBackgroundColor = cur.map(tpColor);
+          tpChart.data.datasets[0].pointBorderColor = cur.map(tpColor);
           tpChart.update();
           refreshCap();
         };
