@@ -13,6 +13,8 @@ Windows에만 있어 Actions가 못 보므로, 여기서 파싱까지 끝내 doc
 원본 로그는 1MB 넘으면 비워져 과거 실행이 사라지므로, 이 이력 파일이 유일한 누적 저장소다
 — 마지막 실행만 파싱해 run_started 기준으로 upsert(진행 중 스냅샷은 완료본으로 교체)하고
 최근 MAX_RUNS(42회=14일×3회)만 남긴다. 대시보드의 "최근 14일 평탄 추종 조회"가 이걸 읽는다.
+잘려나가는 궤적은 사후 분석 표본이라 별도로 data/dkh_plateau_archive.jsonl 에 무기한
+쌓는다(2026-08-04, plateau_archive.py 참조 — 대시보드가 읽는 파일은 42회 그대로다).
 """
 import fcntl
 import json
@@ -22,6 +24,7 @@ import subprocess
 import sys
 
 import parse_plateau_log
+import plateau_archive
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DAT_SRC = "/mnt/c/dkh/work/dkh.dat"
@@ -30,6 +33,9 @@ PLATEAU_SRC = "/mnt/c/dkh/measure_kh.log"
 PLATEAU_DST = os.path.join(REPO_DIR, "docs", "dkh_plateau_history.json")
 DOSER_SRC = "/mnt/c/dkh/work/doser_history.json"   # doser_adjust.py 가 남기는 조정 이력
 DOSER_DST = os.path.join(REPO_DIR, "docs", "doser_history.json")
+# 분석용 무기한 아카이브. 상수로 빼 둬야 테스트가 임시 경로로 갈아끼울 수 있다 —
+# 안 그러면 sync_plateau 를 부르는 테스트가 실제 아카이브에 합성 회차를 남긴다.
+PLATEAU_ARCHIVE = plateau_archive.ARCHIVE_PATH
 MAX_RUNS = 42  # 14일 × 하루 3회 — 대시보드 조회 범위
 LOCK_FILE = "/tmp/dkh_sync.lock"
 LOG_FILE = os.path.expanduser("~/dkh_sync.log")
@@ -77,14 +83,23 @@ def sync_doser():
 
 
 def sync_plateau():
+    """(대시보드용 이력 변경됨, 분석용 아카이브 변경됨) 을 돌려준다."""
     if not os.path.exists(PLATEAU_SRC):
         log.warning("원본 없음: %s", PLATEAU_SRC)
-        return False
+        return False, False
     with open(PLATEAU_SRC, encoding="utf-8", errors="replace") as f:
         text = f.read()
     result = parse_plateau_log.parse_last_run(text)
     if not result or not (result["tank"] or result["ref"]):
-        return False
+        return False, False
+
+    # 아카이브는 대시보드 이력의 변경 여부와 무관하게 먼저 쌓는다 — 같은 줄이면 append 가
+    # no-op 이라 중복도, 놓침도 없다(이력이 backfill 로만 바뀐 회차 등 예외를 안 따져도 됨).
+    try:
+        archived = plateau_archive.append(result, PLATEAU_ARCHIVE)
+    except OSError:
+        log.exception("평탄 아카이브 기록 실패 (동기화는 계속)")
+        archived = False
 
     history = []
     if os.path.exists(PLATEAU_DST):
@@ -113,7 +128,7 @@ def sync_plateau():
     if idx is None:
         history.append(result)
     elif history[idx] == result and not backfilled:
-        return False
+        return False, archived
     else:
         history[idx] = result
     history = history[-MAX_RUNS:]
@@ -121,7 +136,7 @@ def sync_plateau():
     os.makedirs(os.path.dirname(PLATEAU_DST), exist_ok=True)
     with open(PLATEAU_DST, "w") as f:
         json.dump(history, f, ensure_ascii=False)
-    return True
+    return True, archived
 
 
 def sync_with_remote():
@@ -153,7 +168,7 @@ def main():
         return  # 이번 사이클은 포기 — 로컬 상태는 안전하게 보존, 다음 사이클에 재시도
 
     changed_dat = sync_dat()
-    changed_plateau = sync_plateau()
+    changed_plateau, changed_archive = sync_plateau()
     changed_doser = sync_doser()
 
     paths = []
@@ -161,6 +176,8 @@ def main():
         paths.append("data/dkh.dat")
     if changed_plateau:
         paths.append("docs/dkh_plateau_history.json")
+    if changed_archive:
+        paths.append("data/dkh_plateau_archive.jsonl")
     if changed_doser:
         paths.append("docs/doser_history.json")
 

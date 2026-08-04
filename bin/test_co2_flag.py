@@ -199,9 +199,12 @@ def test_sync_backfill():
             json.dump(hist_no_field, f, ensure_ascii=False)
 
         orig_src, orig_dst = sync_dkh_dat.PLATEAU_SRC, sync_dkh_dat.PLATEAU_DST
+        orig_arc = sync_dkh_dat.PLATEAU_ARCHIVE
         sync_dkh_dat.PLATEAU_SRC, sync_dkh_dat.PLATEAU_DST = src, dst
+        # 실제 분석용 아카이브(data/dkh_plateau_archive.jsonl)에 합성 회차가 섞이지 않게
+        sync_dkh_dat.PLATEAU_ARCHIVE = os.path.join(td, "archive.jsonl")
         try:
-            changed = sync_dkh_dat.sync_plateau()
+            changed, archived = sync_dkh_dat.sync_plateau()
             with open(dst) as f:
                 out = json.load(f)
             check("백필만 있어도 changed=True", changed is True)
@@ -212,8 +215,12 @@ def test_sync_backfill():
             check("upsert 유지(3런, run_started 순서)",
                   [r["run_started"] for r in out] == [r["run_started"] for r in hist_no_field])
 
-            changed2 = sync_dkh_dat.sync_plateau()
+            check("아카이브에 회차 적재됨", archived is True)
+            check("아카이브 1줄", sum(1 for _ in open(sync_dkh_dat.PLATEAU_ARCHIVE)) == 1)
+
+            changed2, archived2 = sync_dkh_dat.sync_plateau()
             check("재실행(백필 완료+내용 동일) → changed=False", changed2 is False)
+            check("재실행에 아카이브 중복 안 붙음", archived2 is False)
 
             # 42런 잘림 불변
             many = [dict(old2, run_started=f"2026-06-{d:02d} 05:00:02") for d in range(1, 31)] + out
@@ -227,6 +234,7 @@ def test_sync_backfill():
                   f"{len(out2)}런")
         finally:
             sync_dkh_dat.PLATEAU_SRC, sync_dkh_dat.PLATEAU_DST = orig_src, orig_dst
+            sync_dkh_dat.PLATEAU_ARCHIVE = orig_arc
 
 
 def _mk_log(run_started, flat_n, net_mph):
