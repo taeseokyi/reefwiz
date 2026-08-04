@@ -6,7 +6,7 @@
 
 검증 범위:
   [1] classify_co2_suspect 단위 — 임계·AND 결합·판정 불능 입력 안전성
-  [2] 소급 검증 — 실제 docs/dkh_plateau_history.json 에서 기대 런만 True
+  [2] 소급 검증 — 실제 data/dkh_plateau_archive.jsonl 에서 기대 런만 True
       (2026-07-13 수동 분석과의 일치를 상설 테스트로 고정)
   [3] make_dkh_json (date,hh) 매칭 — 주입·결번 생략·--plateau 하위호환
   [4] sync_dkh_dat lazy 백필 — 필드 부여·upsert/42런 잘림 불변
@@ -26,9 +26,9 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import doser_adjust
 import parse_plateau_log
+import plateau_archive
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLATEAU_JSON = os.path.join(REPO, "docs", "dkh_plateau_history.json")
 SERIES_JSON = os.path.join(REPO, "docs", "dkh_series.json")
 DAT_FILE = os.path.join(REPO, "data", "dkh.dat")
 
@@ -90,21 +90,30 @@ EXPECTED_SUSPECT = {
     # 2026-07-24 재기준화: 7/13 이후 새로 뜬 편향 런(전부 dkh_series.json co2_suspect=true
     # 교차확인 + [[project-seasonal-baseline-retention]] 기록). 롤링 창 이동에 따른 갱신.
     "2026-07-18 05:00", "2026-07-19 05:00", "2026-07-22 05:00", "2026-07-22 13:00",
+    # 2026-08-04 추가: 7/24 이후 새로 뜬 3런. 전부 flat_n 31~35·net −12~−13mpH 로 게이트를
+    # 여유 있게 충족하고, 회차 검토에서 실제 편향으로 확인됐다(8/4 05시는 ref 32회·26분 지연).
+    "2026-07-31 05:00", "2026-08-02 13:00", "2026-08-04 05:00",
 }
 
 
 def test_retro():
-    print("\n[2] 소급 검증 — 실제 dkh_plateau_history.json (2026-07-13 수동 분석 고정)")
-    with open(PLATEAU_JSON) as f:
-        runs = json.load(f)
+    print("\n[2] 소급 검증 — data/dkh_plateau_archive.jsonl (2026-07-13 수동 분석 고정)")
+    # ★2026-08-04: 읽는 대상을 docs/dkh_plateau_history.json(42런=14일 롤링)에서 아카이브로
+    # 옮겼다. 롤링 창이 기준 런을 밀어내면서 이 테스트가 스스로 무력해지고 있었다 —
+    # 8/4 시점에 기준 11건 중 2건만 남아 유효성 가드(>=3)가 트립했고, 하루만 더 지나면
+    # 0건이 돼 빈 집합끼리 비교하며 통과하는 껍데기가 될 참이었다. 아카이브는 안 잘리므로
+    # 기준 런이 영구히 사정권에 남는다(plateau_archive.py 참조).
+    runs = plateau_archive.load()
     got = {r["run_started"][:16] for r in runs
            if parse_plateau_log.classify_co2_suspect(r)[0]}
     covered = {r["run_started"][:16] for r in runs}
-    expected = EXPECTED_SUSPECT & covered  # 14일 롤링으로 오래된 런이 밀려나도 유효
-    check(f"의심 런 집합 일치({len(expected)}건, 보관 {len(runs)}런)", got == expected,
+    # 교집합은 남겨 둔다 — 아카이브는 2026-07-01 부터라, 그보다 앞선 런이 기준 목록에
+    # 들어오면(과거 분석 소급 등) 담을 수 없기 때문. 현재는 11건 전부 사정권 안이다.
+    expected = EXPECTED_SUSPECT & covered
+    check(f"의심 런 집합 일치({len(expected)}건, 아카이브 {len(runs)}런)", got == expected,
           f"got-expected={sorted(got - expected)} expected-got={sorted(expected - got)}")
-    check("기준 런이 보관분에 존재(테스트 유효성)", len(expected) >= 3,
-          "14일 롤링으로 기준 런이 모두 밀려남 — EXPECTED_SUSPECT 갱신 필요")
+    check("기준 런이 아카이브에 존재(테스트 유효성)", len(expected) >= 3,
+          "아카이브가 비었거나 기준 런을 못 담고 있음 — 적재 상태 확인 필요")
 
 
 # ------------------------------------------------- [3] make_dkh_json 매칭 주입
