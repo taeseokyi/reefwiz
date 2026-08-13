@@ -383,7 +383,7 @@ Register-ScheduledTask -TaskName 'Measure KH' -TaskPath '\tsyi\' `
 ```
 Windows 스케줄러 (05/13/21시)
   └ run_measure_and_sync.py (래퍼, C:\dkh\work)
-      ① measure_kh_once.py  — V4 측정 → dkh.dat 기록·reefCore 발행
+      ① measure_kh_once.py  — V4 측정 → dkh.dat 기록
       ② doser_adjust.py     — 대시보드 수동 도징 설정 확인·적용(매회)
       │                       + 자동 조정 권고 계산(매일 13시 회차만)
       ③ wsl.exe → sync_dkh_dat.py — dkh.dat·평탄 이력·도저 이력 커밋/push

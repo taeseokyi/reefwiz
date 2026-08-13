@@ -42,40 +42,28 @@ reefcore-checker-<mac6>/sensor|select|switch|number/<엔티티>/state
 - 발행 시 **고유 client_id**(`reefwiz-*`)를 쓰면 체커의 MQTT 세션을 끊지 않습니다.
 - 대상 체커 MAC은 `$REEFCORE_MAC`(기본값=내 체커)로 지정. 토픽의 `<mac6>`는 MAC 끝 6자리.
 
-## 4. 구현 — `measure_kh_once.py` 에 통합 (채택)
+## 4. 구현 — 수동 발행 도구 `bin/reefcore_bridge.py`
 
-측정 종료 시점이 가변(평탄까지, 최대 4h)이라 고정 시각 스케줄로는 완료를 놓친다. 그래서
-**측정 스크립트가 `dkh.dat` 에 기록한 직후** `publish_to_reefcore()` 로 한 번 발행한다(측정당 정확히 1회).
+> **★2026-08-12 변경: 측정 스크립트의 자동 발행 제거(사용자 지시).**
+> 이전에는 `measure_kh_once.py` 가 `dkh.dat` 기록 직후 `publish_to_reefcore()` 로 측정당 1회
+> 자동 발행했다. 지금은 그 코드(`publish_to_reefcore`·`_publishable`·`_reefcore_creds`)가
+> **측정 소스에서 완전히 제거**됐다 — 측정은 `dkh.dat` 기록까지만 하고 reefCore 로 아무것도
+> 보내지 않는다. `C:\dkh\reefcore.conf` 나 paho 설치 여부와도 무관해졌다.
+> 발행이 필요하면 아래 브리지를 **수동으로** 실행한다.
 
-- **best-effort**: 자격 미설정·paho 미설치·연결 실패 등 어떤 오류도 측정을 중단시키지 않는다.
-- **값 `None`(값 없음)만 발행 제외, 나머지는 전부 발행** — `0`=측정 에러, 음수=평탄 미도달(V4 규약)도 **그대로 발행해 부호·0 자체가 상태를 전달**한다(reefCore 가 dkh.dat 와 동일 규약을 반영). 게이트는 `_publishable(tank_kh)`(=`tank_kh is not None`). calkh 에러 경로(`else`)도 `0.0` 을 발행한다. ※ reefCore 백엔드가 음수/0 dKH 를 파싱·저장할 수 있어야 의미가 있다(부호=상태).
-- 발행은 **`retain=False`**·`qos=1`, 고유 client_id(`reefwiz-bridge`)라 체커 세션을 끊지 않는다.
+`bin/reefcore_bridge.py` 가 같은 MQTT 발행을 1회 실행하는 독립 도구다(디버그·보충용).
+
+- **best-effort**: 자격 미설정·paho 미설치·연결 실패 등에서 조용히/우아하게 끝난다.
+- 발행은 **`retain=False`**·`qos=1`, 고유 client_id(`reefwiz-*`)라 체커 세션을 끊지 않는다.
   - ⚠️ **`retain=False` 가 중요하다.** 이 토픽은 단순 상태가 아니라 "수신 시 측정 레코드를 생성"하는 이벤트 토픽이라, `retain=True` 면 브로커가 보관한 옛 측정값을 **백엔드 재접속 때마다 재전달 → 유령 중복 레코드**를 만들 수 있다. 백엔드는 상시 접속(`/debug/state` 의 `mqtt_connected:true`)이라 `retain=False` 여도 발행이 정상 도달한다(2026-06-25 실측: retain=False 발행 후 `/debug/state` 의 '최근 측정값' 토픽이 즉시 갱신됨). 과거 `retain=True` 로 남았던 retained 메시지는 빈 retained 발행으로 클리어 완료.
 
-자격증명 로딩 우선순위(`_reefcore_creds()`): **환경변수 → 설정 파일**. 스케줄 작업이 사용자
-환경변수를 못 보는 경우가 있어 설정 파일 폴백을 둔다.
+자격증명은 **환경변수**(`$REEFCORE_USER`/`$REEFCORE_PASS`/`$REEFCORE_MAC`)로 준다.
 
-```ini
-# C:\dkh\reefcore.conf  (저장소 밖, .gitignore — 평문 자격이므로 외부 노출/커밋 금지)
-user=<reefCore 계정 이메일>
-pass=<reefCore 계정 비번>
-mac=<체커 MAC>
-# tls_verify=1   # 브로커(8883) 인증서 갱신 후 주석 해제 → TLS 검증 ON (재배포 불요)
-```
+## 5. 참고 — dKH 값 규약
 
-> 참고: `bin/reefcore_bridge.py` 는 같은 발행을 **수동 1회** 실행하는 독립 도구(디버그/보충용).
-> 상시 자동 발행은 위 통합 경로가 담당한다.
-
-## 5. 배포 (Windows)
-
-1. **Windows python 에 paho 설치**: `C:\dkh\python313\python.exe -m pip install paho-mqtt`
-   (없으면 발행이 조용히 스킵된다 — 측정은 정상.)
-2. **자격 설정 파일 생성**: `C:\dkh\reefcore.conf` (위 형식).
-3. **스크립트 배포**: 갱신된 `bin/measure_kh_once.py` → `C:\dkh\work\` 복사.
-   - 측정 코드 변경이므로 배포 전 **시뮬레이터 회귀테스트** 필수: `cd bin && python3 test_measure_sim.py`.
-4. **동작 검증**(실측 1건 발행):
-   `C:\dkh\python313\python.exe -X utf8 -c "import sys;sys.path.insert(0,r'C:\dkh\work');import measure_kh_once as m;m.publish_to_reefcore(8.43,27.2)"`
-   → `[reefCore] 발행: dKH: 8.43 dKH | …` 출력되면 정상. 이후 정시 측정마다 자동 발행.
+`dkh.dat` 의 수조 dKH 는 **양수=정상 측정, 음수=평탄 미도달, 0=측정 에러**(V4 규약)다.
+브리지로 수동 발행할 때는 이 규약을 아는 값만 올리는 편이 안전하다 — reefCore 백엔드가
+음수/0 dKH 를 파싱·저장한다는 보장은 없다.
 
 ## 6. 보안 / 운영 주의
 

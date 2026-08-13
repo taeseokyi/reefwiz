@@ -106,9 +106,9 @@ cd bin && python3 test_measure_sim.py      # WSL python3 + pyserial 3.5 (socket:
 > *전* 항상 이 테스트를 돌려 전부 PASS인지 확인한 뒤 `C:\dkh\work`로 배포한다.** 시뮬레이터·테스트는
 > 저장소 `bin/`에만 두고 Windows로 배포하지 않는다.
 
-### 시나리오 (23개 / 122 검증)
+### 시나리오 (23개 / 112 검증)
 
-**정상/회복 11 시나리오 (62 검증):**
+**정상/회복 11 시나리오 (60 검증):**
 
 | # | 시나리오 | 검증 수 | 확인 내용 |
 |---|----------|:---:|------|
@@ -118,8 +118,8 @@ cd bin && python3 test_measure_sim.py      # WSL python3 + pyserial 3.5 (socket:
 | 4 | calref(`--setref`) | 6 | ref dKH 역산 경로 견고성 + 수조 dKH=입력값 |
 | 9 | 측정 read 중 드롭(before) | 5 | **send 내부 재시도**로 같은 측정 재송신해 성공(tank 9회=8+재송신1) |
 | 10 | calref 도중 드롭(setref) | 6 | `setref` 응답 전 드롭 → 재연결+재송신(setref 2회) 후 역산 완주 |
-| 13 | calref 기록(평탄) | 4 | `main`이 dkh.dat·reefCore에 기록(수조 dKH=`--setref` 입력값, 양수) |
-| 14 | calref 미평탄 | 4 | 상한 도달 시 수조 dKH 음수(−입력값)로 dkh.dat·reefCore 둘 다 발행 |
+| 13 | calref 기록(평탄) | 3 | `main`이 dkh.dat에 기록(수조 dKH=`--setref` 입력값, 양수) |
+| 14 | calref 미평탄 | 3 | 상한 도달 시 dkh.dat 수조 dKH 음수(−입력값) 기록 |
 | 19 | 링크 사망→복귀 | 5 | 평탄 phase 중 완전 두절→재기동→끈질긴 대기(§2.5)가 재접속·측정 재개·완주 |
 | 20 | 무딘 S커브 MIN_N | 8 | (a) `FLAT_MIN_N_TANK=0`(현 기본, 사전폭기가 초기 lag 흡수 전제)서 저진폭 lag false lock 재현 (b) `=20`이면 참평형 도달·ref 미적용 — min_n 원복 시 동작 문서화(2026-07-23 min_n 제거) |
 | 23 | 고정 사전폭기 + read 직전 폭기 토글 | 5 | 측정 전 사전폭기(tank 1500s·ref 210s) 호출 + 각 read 직전 `airoff`·샘플 사이 `ron` 재폭기(2026-07-23) |
@@ -134,10 +134,10 @@ cd bin && python3 test_measure_sim.py      # WSL python3 + pyserial 3.5 (socket:
 | 8 | 버스트(연속 2회 드롭) | 4 | 두 번 재연결하며 완주, 정확도 유지 |
 | 11 | setref 예외 | 4 | 범위 밖(`--setref 40`)=main 가드가 측정 전 차단 / 펌웨어 `[ERR]` 거부=측정 전 RuntimeError |
 | 12 | 모터 정지(`mNs`) 명령 드롭 | 5 | 정지 명령 자체가 드롭돼도 다음 시도에서 재연결·재정지·재송신으로 완료 |
-| 15 | calkh 에러 발행 | 5 | 통신 두절→0(에러) dkh.dat·reefCore 발행 + `_publishable` 게이트(음수·0 발행, None만 제외) |
-| 16 | calref 에러 발행 | 2 | calref 실패도 calkh와 동일하게 0(에러) 기록·발행 |
-| 17 | 에러 래치 공통 | 6 | calkh·calref 둘 다 래치 발동 시 측정 생략 + 0.0 기록·발행(에러 처리 완전 일치) |
-| 18 | 호스트 구제 | 4 | calkh 직전 완전 두절→시작 캐시 refKH로 음수 dKH 기록·발행(0.0 래치 방지, §2.5) |
+| 15 | calkh 에러 기록 | 1 | 통신 두절→dkh.dat에 0(에러) 표식 기록 |
+| 16 | calref 에러 기록 | 1 | calref 실패도 calkh와 동일하게 0(에러) 기록 |
+| 17 | 에러 래치 공통 | 4 | calkh·calref 둘 다 래치 발동 시 측정 생략 + 0.0 기록(에러 처리 완전 일치) |
+| 18 | 호스트 구제 | 3 | calkh 직전 완전 두절→시작 캐시 refKH로 음수 dKH 기록(0.0 래치 방지, §2.5) |
 | 21 | 비상정리 전제조건(airoff·ton) | 7 | 링크 회복 후 전제조건부터 재시도 / 끝내 실패 시 모터 생략(2026-07-10, §2.5 3차 보강) |
 | 22 | 비상정리 진행 지점 판단 | 13 | 시작 전=모터 0회 / ref 단계=m4b 회수 / 이송 도중=동결(UNKNOWN sticky, 2026-07-10) |
 

@@ -9,16 +9,16 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
 ★측정/BT 로직 변경 시 배포 *전* 항상 실행해 전부 PASS 확인(언제든 재실행 가능).
 실행: cd bin && python3 test_measure_sim.py     (WSL python3 — pyserial 3.5)
 
-총 25 시나리오 / 139 검증:
-  ── 정상/회복 13 시나리오(79 검증) ──
+총 25 시나리오 / 146 검증(2026-08-12 실행 실측):
+  ── 정상/회복 13 시나리오(77 검증) ──
     [1] 클린 calkh          (12) 전체 흐름·첫점(n=0)수집·정확히 8회째 평탄·dKH·모터8종·재연결0
     [2] 측정 중 드롭(after)  (6) 송신 전 연결확인이 다음 측정 전 재연결, 정확도 유지
     [3] 모터 드롭→정지·재송신(5) 재시도 시 mNs 정지 후 재송신(순서 m1f→m1s→m1f)
     [4] calref(--setref)     (6) ref dKH 역산 경로 견고성 + 수조 dKH=입력값
     [9] 측정 in-send 재시도  (5) 측정 read 중 드롭→send 내부 재연결+재송신 성공(tank 9회)
     [10] calref 도중 드롭     (6) setref 재연결+재송신 후 역산 완주(setref 2회)
-    [13] calref 기록(평탄)   (4) main 이 dkh.dat·reefCore 에 기록(수조 dKH=--setref 입력값, 양수)
-    [14] calref 미평탄       (4) 상한 도달 시 수조 dKH 음수(-입력값) dkh.dat·reefCore 둘 다 발행
+    [13] calref 기록(평탄)   (3) main 이 dkh.dat 에 기록(수조 dKH=--setref 입력값, 양수)
+    [14] calref 미평탄       (3) 상한 도달 시 dkh.dat 수조 dKH 음수(-입력값) 기록
     [19] 링크 사망→복귀      (5) 평탄 phase 중 완전 두절→재기동→끈질긴 대기가 재접속·측정 재개·완주
     [20] 무딘 S커브 MIN_N    (8) 저진폭 lag false lock 재현(a) + FLAT_MIN_N_TANK=20 시 참평형 도달·ref 미적용(b)
     [23] 사전폭기+폭기 토글   (5) 고정 사전폭기(tank1500/ref210s) 수행 + read 직전 airoff·샘플사이 ron 재폭기(2026-07-23)
@@ -28,17 +28,17 @@ measure_kh_once.py 통합 회귀 테스트 (firmware_sim 소켓 가상 포트)
                                   (b)지속 유실 시 유한 False+★★경고 (c)swallow=False 는 링크 사망을 올려보냄(2026-07-28)
     [27] 이송 전제조건 필수   (8) 액체 이동 전 airoff·ton 확인 없으면 모터 금지 — (a)순간 유실은 재시도로
                                   흡수·완주 (b)끝내 미확인이면 모터 0회+경고+에러(거짓 성공 원천 차단)(2026-07-28)
-  ── 예외 12 시나리오(60 검증) ──
+  ── 예외 12 시나리오(52 검증) ──
     [5] 완전 통신 두절(kill) (3) main 이 잡는 예외로 우아하게 종료(크래시·행 없음)
     [6] 깨진 응답(pH 누락)   (3) 파싱 실패→FAIL_MAX phase 실패(연결문제 아님)
     [7] 모터 완료 누락(막힘) (3) 재시도(정지+재송신) 소진 후 미완료 처리
     [8] 버스트(연속 2회 드롭)(4) 두 번 재연결하며 완주, 정확도 유지
     [11] setref 예외         (4) 범위 밖=main 가드 차단 / 펌웨어 거부=측정 전 RuntimeError
     [12] 모터 정지 명령 드롭 (5) mNs 자체 드롭→다음 시도 재연결·재정지·재송신 완료
-    [15] calkh 에러 발행     (5) 통신 두절→0(에러) dkh.dat·reefCore 발행 + _publishable 게이트(음수·0 발행, None 만 제외)
-    [16] calref 에러 발행     (2) calref 실패도 calkh 와 동일하게 0(에러) dkh.dat·reefCore 발행
-    [17] 에러 래치 공통       (6) calkh·calref 둘 다 래치 발동 시 측정 생략 + 0.0 기록·발행(에러 처리 완전 일치)
-    [18] 호스트 구제          (4) calkh 직전 완전 두절→시작캐시 refKH 로 음수 dKH 기록·발행(0.0 래치 방지)
+    [15] calkh 에러 기록     (1) 통신 두절→dkh.dat 에 0(에러) 표식 기록
+    [16] calref 에러 기록     (1) calref 실패도 calkh 와 동일하게 dkh.dat 에 0(에러) 기록
+    [17] 에러 래치 공통       (4) calkh·calref 둘 다 래치 발동 시 측정 생략 + 0.0 기록(에러 처리 완전 일치)
+    [18] 호스트 구제          (3) calkh 직전 완전 두절→시작캐시 refKH 로 음수 dKH 기록(0.0 래치 방지)
     [21] 비상정리 전제조건    (7) 링크 사망 중 airoff·ton 실패→(a)회복 대기 후 전제조건부터 재시도·모터는
                                   그 뒤에만·KCl 복원 (b)끝내 실패 시 모터 생략+경고(거짓 성공 로그 방지)
     [22] 비상정리 진행 지점   (13) 액체 위치(_liquid) 판단 선행→(a)시작 전(챔버=KCl)=모터 0회
@@ -395,21 +395,19 @@ def scenario_motor_stop_drop():
 
 
 def _drive_main(setref=None, meas_max=None, drops=None, dat_error=False):
-    """main() 을 socket 가상포트로 구동하고 log_kh·publish_to_reefcore 호출 인자를 가로채 반환.
-    serial.Serial 을 socket:// 로 바꿔 sim 과 통신(실 BT·실 reefCore 발행 없음).
+    """main() 을 socket 가상포트로 구동하고 log_kh 호출 인자를 가로채 반환.
+    serial.Serial 을 socket:// 로 바꿔 sim 과 통신(실 BT 없음).
     last_dat_is_error 도 패치(기본 False) → 실 dkh.dat 와 무관하게 측정 진행; dat_error=True 로 래치 경로 테스트.
-    returns (logged, published, out)."""
+    returns (logged, out)."""
     sim = FirmwareSim(); sim.drops = drops or []
     port = sim.start(); time.sleep(0.1)
-    logged, published = {}, {}
-    orig_log, orig_pub = mk.log_kh, mk.publish_to_reefcore
+    logged = {}
+    orig_log = mk.log_kh
     orig_serial, orig_argv, orig_max = mk.serial.Serial, sys.argv, mk.MEAS_MAX
     orig_late = mk.last_dat_is_error
     def fake_log(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp):
         logged.update(dict(hour=hour, ref_ph=ref_ph, tank_ph=tank_ph,
                            ref_kh=ref_kh, tank_kh=tank_kh, temp=temp))
-    def fake_pub(tank_kh, temp):
-        published.update(dict(tank_kh=tank_kh, temp=temp))
     def fake_serial(p, b, timeout=1, **kw):
         # write_timeout 등 추가 kwargs 는 socket 가상포트에 그대로 전달(2026-07-03 write_timeout=5 대응)
         return serial.serial_for_url(p, baudrate=b, timeout=timeout, **kw)
@@ -418,7 +416,7 @@ def _drive_main(setref=None, meas_max=None, drops=None, dat_error=False):
         argv += ['--setref', str(setref)]
     buf = io.StringIO()
     try:
-        mk.log_kh, mk.publish_to_reefcore = fake_log, fake_pub
+        mk.log_kh = fake_log
         mk.serial.Serial = fake_serial
         mk.last_dat_is_error = lambda: dat_error
         if meas_max is not None:
@@ -427,43 +425,39 @@ def _drive_main(setref=None, meas_max=None, drops=None, dat_error=False):
         with contextlib.redirect_stdout(buf):
             mk.main()
     finally:
-        mk.log_kh, mk.publish_to_reefcore = orig_log, orig_pub
+        mk.log_kh = orig_log
         mk.serial.Serial, sys.argv, mk.MEAS_MAX = orig_serial, orig_argv, orig_max
         mk.last_dat_is_error = orig_late
         sim.stop()
-    return logged, published, buf.getvalue()
+    return logged, buf.getvalue()
 
 
 def scenario_calref_records():
-    print("\n[13] calref(--setref) 평탄 → main 이 dkh.dat·reefCore 에 양수 기록(수조 dKH=입력값)")
-    logged, published, out = _drive_main(setref=8.448)
+    print("\n[13] calref(--setref) 평탄 → main 이 dkh.dat 에 양수 기록(수조 dKH=입력값)")
+    logged, out = _drive_main(setref=8.448)
     expect_new_ref = DEFAULT_REF_DKH * (10 ** (-(TANK_PH - REF_PH)))   # ≈ 8.765
     check("dkh.dat 기록됨(log_kh 호출)", bool(logged), f"logged={logged}")
     check("수조 dKH = 입력값 8.448(양수)", logged.get('tank_kh') == 8.448, f"got {logged.get('tank_kh')}")
     check("ref_kh 칼럼 = 역산된 새 ref dKH(≈8.765)",
           logged.get('ref_kh') is not None and abs(logged['ref_kh'] - expect_new_ref) < 0.01,
           f"got {logged.get('ref_kh')}")
-    check("reefCore 발행 호출(tank_kh=입력값 8.448)", published.get('tank_kh') == 8.448,
-          f"published={published}")
 
 
 def scenario_calref_unflat():
-    print("\n[14] calref 미평탄(상한) → 수조 dKH 음수(-입력값) dkh.dat·reefCore 둘 다 발행")
+    print("\n[14] calref 미평탄(상한) → dkh.dat 수조 dKH 음수(-입력값) 기록")
     # MEAS_MAX 를 FLAT_NET_N(8) 미만으로 낮춰 평탄 판정 전 상한 도달 → flat_ok=False 강제.
-    logged, published, out = _drive_main(setref=8.448, meas_max=5)
+    logged, out = _drive_main(setref=8.448, meas_max=5)
     check("상한(미평탄) 로그", '[상한]' in out)
     check("dkh.dat 수조 dKH = 음수 표식 -8.448(값=입력값)", logged.get('tank_kh') == -8.448,
           f"got {logged.get('tank_kh')}")
     check("ref_kh 는 양수(부호는 tank_kh 만)", (logged.get('ref_kh') or 0) > 0, f"got {logged.get('ref_kh')}")
-    check("reefCore 도 음수 -8.448 발행(미평탄 약속 전달)", published.get('tank_kh') == -8.448,
-          f"published={published}")
 
 
 def scenario_host_salvage():
-    print("\n[18] calkh 직전 완전 두절 → 호스트 구제: 음수 dKH 기록·발행(0.0 래치 방지) (2026-07-03)")
+    print("\n[18] calkh 직전 완전 두절 → 호스트 구제: 음수 dKH 기록(0.0 래치 방지) (2026-07-03)")
     # 양 phase 평탄 후 calkh 만 못 돌린 상황 — 호스트가 시작 시 캐시한 refKH 로 동일 차동식 계산,
     # 음수(미평탄) 표식으로 기록해 0.0 래치(다음 측정 생략)를 피해야 한다.
-    logged, published, out = _drive_main(
+    logged, out = _drive_main(
         drops=[{'pat': 'calkh', 'nth': 1, 'when': 'before', 'kill': True}])
     check("호스트 구제 로그", '호스트 구제' in out)
     check("dkh.dat 음수 구제값(≈-기대 dKH)",
@@ -472,9 +466,6 @@ def scenario_host_salvage():
     check("ref_kh = 시작 시 status 캐시(양수)",
           logged.get('ref_kh') is not None and abs(logged['ref_kh'] - DEFAULT_REF_DKH) < 0.001,
           f"got {logged.get('ref_kh')}")
-    check("reefCore 도 음수 발행(0.0 래치 아님)",
-          published.get('tank_kh') is not None and published['tank_kh'] < 0,
-          f"published={published}")
 
 
 def scenario_link_recovery():
@@ -711,33 +702,26 @@ def scenario_cleanup_state():
 
 
 def scenario_calkh_error_publish():
-    print("\n[15] calkh 측정 실패(통신 두절) → dkh.dat·reefCore 둘 다 0(에러) 발행")
-    # 첫 tank 직전 서버 kill → run_measurement 예외 → main 이 0.0 행 기록 + 0.0 발행.
-    logged, published, out = _drive_main(drops=[{'pat': 'tank', 'nth': 1, 'when': 'before', 'kill': True}])
+    print("\n[15] calkh 측정 실패(통신 두절) → dkh.dat 에 0(에러) 표식 기록")
+    # 첫 tank 직전 서버 kill → run_measurement 예외 → main 이 0.0 행 기록.
+    logged, out = _drive_main(drops=[{'pat': 'tank', 'nth': 1, 'when': 'before', 'kill': True}])
     check("dkh.dat 에러 표식 0.0 기록", logged.get('tank_kh') == 0.0, f"got {logged.get('tank_kh')}")
-    check("reefCore 도 0.0(에러) 발행", published.get('tank_kh') == 0.0, f"published={published}")
-    # 발행 게이트: None 만 제외, 음수(미평탄)·0(에러)은 발행 허용.
-    check("_publishable: 음수 True", mk._publishable(-8.448) is True)
-    check("_publishable: 0 True", mk._publishable(0.0) is True)
-    check("_publishable: None False", mk._publishable(None) is False)
 
 
 def scenario_calref_error_publish():
-    print("\n[16] calref 측정 실패(통신 두절) → calkh 와 동일하게 0(에러) dkh.dat·reefCore 발행")
-    # 에러 처리 일치 검증: calref 도 실패 시 [15] calkh 와 똑같이 0.0 기록·발행해야 함.
-    logged, published, out = _drive_main(setref=8.448, drops=[{'pat': 'tank', 'nth': 1, 'when': 'before', 'kill': True}])
+    print("\n[16] calref 측정 실패(통신 두절) → calkh 와 동일하게 dkh.dat 에 0(에러) 기록")
+    # 에러 처리 일치 검증: calref 도 실패 시 [15] calkh 와 똑같이 0.0 기록해야 함.
+    logged, out = _drive_main(setref=8.448, drops=[{'pat': 'tank', 'nth': 1, 'when': 'before', 'kill': True}])
     check("dkh.dat 에러 표식 0.0 기록(calref)", logged.get('tank_kh') == 0.0, f"got {logged.get('tank_kh')}")
-    check("reefCore 도 0.0(에러) 발행(calref)", published.get('tank_kh') == 0.0, f"published={published}")
 
 
 def scenario_latch_consistency():
-    print("\n[17] 에러 래치 calkh·calref 공통 → 측정 생략 + 0.0 기록·발행")
-    # 마지막 dkh.dat 줄이 에러(0.0)면 두 모드 모두 측정 안 하고 0.0 재기록·발행(에러 처리 일치).
+    print("\n[17] 에러 래치 calkh·calref 공통 → 측정 생략 + 0.0 기록")
+    # 마지막 dkh.dat 줄이 에러(0.0)면 두 모드 모두 측정 안 하고 0.0 재기록(에러 처리 일치).
     for label, setref in (("calkh", None), ("calref", 8.448)):
-        logged, published, out = _drive_main(setref=setref, dat_error=True)
+        logged, out = _drive_main(setref=setref, dat_error=True)
         check(f"[{label}] 래치 발동(측정 생략 로그)", '[중단]' in out, f"out={out[:80]}")
         check(f"[{label}] dkh.dat 0.0 재기록", logged.get('tank_kh') == 0.0, f"got {logged.get('tank_kh')}")
-        check(f"[{label}] reefCore 0.0 발행", published.get('tank_kh') == 0.0, f"published={published}")
 
 
 def scenario_preaerate_toggle():

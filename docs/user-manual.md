@@ -380,7 +380,7 @@ newRefDKH = 수조dKH × 10^(-(tankPH − refPH))
 
 - **데이터 흐름:** Windows 측정 완료 직후 래퍼(`run_measure_and_sync.py`)가 WSL의 `sync_dkh_dat.py`를 호출 → git push → GitHub Actions(`make_dkh_json.py`) → Pages 반영. 측정 종료 후 수 분 내 갱신됩니다.
 - **최신값 JSON API:** 측정 PC의 `dkh_server.py`가 `GET /api/dkh`(포트 9999)로 마지막 측정값을 제공합니다. 외부에서는 `http://tsyi.homeip.net:9999/api/dkh` (※같은 네트워크의 WSL 내부에서 외부 URL 접근은 NAT 루프백 문제로 실패할 수 있음).
-- **reefCore 연동:** 측정값은 reefChecker '최근 측정값'으로도 자동 발행됩니다 → [reefCore 연동](reefcore-integration.md)
+- **reefCore 연동:** 측정 스크립트의 자동 발행은 **제거**됐습니다(2026-08-12). 필요할 때 `bin/reefcore_bridge.py`로 수동 발행합니다 → [reefCore 연동](reefcore-integration.md)
 
 ---
 

@@ -30,7 +30,7 @@
 - **[3D 프린팅 하우징](docs/system-setup.md#하우징-3d-프린팅)** — OpenSCAD 파라메트릭 설계, 부품 실측 후 즉시 출력
 - **[웹 대시보드 (PWA)](docs/user-manual.md#9-웹-대시보드)** — 측정 완료 직후 결과가 자동으로 GitHub Pages에 반영. dKH 그래프(3일/7일/전체), 평탄 수렴 곡선 조회(최근 14일), 최신값 JSON API
 - **[도저 자동 조정 (권고)](docs/user-manual.md#10-도저-자동-조정-올포리프)** — 측정된 dKH 수준(3회 중앙값)·추세(7일 기울기)로 올포리프 도징량 조정을 계산. 대시보드에서 수동 도징량·목표 dKH 설정 가능
-- **[reefCore 연동](docs/reefcore-integration.md)** — 측정값을 reefCore 생태계(reefChecker)에 측정 레코드로 자동 발행
+- **[reefCore 연동](docs/reefcore-integration.md)** — 측정값을 reefCore 생태계(reefChecker)에 측정 레코드로 발행(수동 도구 `bin/reefcore_bridge.py`. 측정 스크립트의 자동 발행은 2026-08-12 제거)
 - **확장 가능** — ESP32 보드와 시리얼/블루투스 연결로 Wi-Fi, 모바일 앱, 인터넷 접속으로 확장 가능
 
 > 정밀한 pH 측정을 위해 Wi-Fi가 없는 Arduino Nano를 사용하여 전자기 간섭을 최소화하였습니다. Wi-Fi, 웹 대시보드, 데이터 로깅 등 부족한 기능은 ESP32를 시리얼/블루투스로 연결하면 해결 가능합니다.
@@ -174,7 +174,7 @@ python bin/measure_kh_once.py COM7   # 포트 직접 지정
 | [사용 설명서](docs/user-manual.md) | 전체 명령어, 보정, 오류 메시지, 웹 대시보드, 도저 자동 조정 |
 | [준비물 목록](docs/parts-list.md) | 부품 사진, 구매 링크, 금액 |
 | [**측정 대장**](docs/measurement-ledger.md) | 코드 버전별 실측 기록·환경·ΔpH 검증·참조 문헌 — **결과 신뢰성의 근거** |
-| [reefCore 연동](docs/reefcore-integration.md) | 측정값을 reefCore 생태계에 발행하는 MQTT 연동 |
+| [reefCore 연동](docs/reefcore-integration.md) | 측정값을 reefCore 생태계에 발행하는 MQTT 연동(수동 브리지) |
 | [블루투스 재연결](docs/bt-reconnect-and-testing.md) | HC-06 RF 순단 대응·장기 사망 보강·시뮬레이터 회귀 검증 |
 
 ## 산호 수조 권장 dKH 범위

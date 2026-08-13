@@ -12,12 +12,12 @@ HC-06 블루투스 시리얼로 한 번만 측정하고 dkh.dat 에 기록 후 �
       2) tank·ref pH 측정(calkh 모드와 완전히 동일).
       3) calref 호출 → 펌웨어가 newRefDKH = 수조dKH · 10^(-(tankPH-refPH)) 계산 후
          refDKH 에 대입 + EEPROM 저장(펌웨어 calcRefDKH 가 자동 저장 → 추가 setref 불요).
-    ★측정 결과도 dkh.dat·reefCore 에 기록한다(수조 dKH = --setref 로 입력한 실측값,
+    ★측정 결과도 dkh.dat 에 기록한다(수조 dKH = --setref 로 입력한 실측값,
     ref_kh 칼럼 = 역산된 새 ref dKH). 평탄 미도달이면 calkh 와 동일하게 수조 dKH 에
     음수(-) 표식을 붙여(값 크기는 입력값 유지) 값만으로 미평탄을 알 수 있게 한다
-    (음수=미평탄·0=에러도 reefCore 에 그대로 발행 — 부호/0 이 상태 전달). 알려진 수조 dKH 로 ref 를 교정할 때 쓴다.
-    ★★calref 의 저장·발행·에러 처리는 calkh 와 **완전 동일**(성공=값 기록·발행, 실패/일부 None=0.0 에러 표식
-    기록·발행, 에러 래치도 공통). 모드 차이는 콘솔 안내 문구(ref dKH 저장 여부)뿐 — 동작 일치로 상황 파악을 직관화.
+    (음수=미평탄·0=에러 — 부호/0 이 상태 전달). 알려진 수조 dKH 로 ref 를 교정할 때 쓴다.
+    ★★calref 의 저장·에러 처리는 calkh 와 **완전 동일**(성공=값 기록, 실패/일부 None=0.0 에러 표식
+    기록, 에러 래치도 공통). 모드 차이는 콘솔 안내 문구(ref dKH 저장 여부)뿐 — 동작 일치로 상황 파악을 직관화.
 
 V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
   - tank·ref 를 폭기 유지(ron)한 채 반복 측정, **최근 FLAT_SPAN_N개 max−min ≤ FLAT_SPAN_MPH(흔들림)
@@ -202,89 +202,6 @@ def log_kh(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp):
     print(f"[LOG] {DAT_FILE} ← {line}")
 
 
-def _reefcore_creds():
-    """reefCore 자격증명을 (user, pw, mac, tls_verify) 으로 반환. 없으면 (None, None, None, False).
-
-    우선순위: 환경변수 → 설정 파일(스케줄 작업이 env 를 못 볼 때 대비).
-    설정 파일 형식(한 줄에 KEY=VALUE): user=..., pass=..., mac=...(선택), tls_verify=0/1(선택).
-    값을 저장소에 커밋하지 않는다 — 설정 파일은 .gitignore 처리.
-    tls_verify: 브로커 인증서 검증 여부. 현재 8883 인증서가 만료 상태라 기본 0(검증 끔).
-                운영자가 인증서 갱신하면 conf 에 tls_verify=1 만 추가하면 검증 ON(재배포 불요).
-    """
-    def truthy(v): return str(v).strip().lower() in ('1', 'true', 'yes', 'on')
-    user = os.environ.get('REEFCORE_USER')
-    pw   = os.environ.get('REEFCORE_PASS')
-    if user and pw:
-        return (user, pw, os.environ.get('REEFCORE_MAC', 'b0cbd88ec880'),
-                truthy(os.environ.get('REEFCORE_TLS_VERIFY', '0')))
-    here = os.path.dirname(os.path.abspath(__file__))
-    for p in [os.environ.get('REEFCORE_CONF'), r'C:\dkh\reefcore.conf',
-              '/mnt/c/dkh/reefcore.conf', os.path.join(here, 'reefcore.conf')]:
-        try:
-            if p and os.path.exists(p):
-                conf = {}
-                for ln in open(p, encoding='utf-8'):
-                    ln = ln.strip()
-                    if ln and not ln.startswith('#') and '=' in ln:
-                        k, v = ln.split('=', 1)
-                        conf[k.strip().lower()] = v.strip()
-                u  = conf.get('user') or conf.get('reefcore_user')
-                pw2 = conf.get('pass') or conf.get('password') or conf.get('reefcore_pass')
-                if u and pw2:
-                    return (u, pw2, conf.get('mac', 'b0cbd88ec880'),
-                            truthy(conf.get('tls_verify', '0')))
-        except Exception:
-            pass
-    return None, None, None, False
-
-
-def _publishable(tank_kh):
-    """reefCore 발행 정책: 값 자체가 상태를 전달하므로 None(값 없음)만 제외하고 전부 발행한다.
-    양수=정상 측정, 음수=미평탄 표식, 0=에러 표식 — 부호·0 이 reefCore 에도 그대로 실린다."""
-    return tank_kh is not None
-
-
-def publish_to_reefcore(tank_kh, temp):
-    """측정 직후 reefCore(reefChecker)에 dKH 를 best-effort 로 발행한다.
-
-    체커의 '최근 측정값' MQTT 토픽에 `dKH: <값> dKH | <온도>°C @ <시각>` 을 쏘면
-    백엔드가 파싱해 해당 체커의 dKH 측정 레코드를 만든다. 상세: docs/reefcore-integration.md
-    - 자격증명(env REEFCORE_USER/PASS 또는 설정파일)이 없으면 조용히 비활성(opt-in).
-    - paho 미설치·연결 실패 등 어떤 오류도 측정을 중단시키지 않는다(best-effort).
-    - 값 None(값 없음)만 발행 제외 — 음수(미평탄)·0(에러)은 부호/0 자체가 상태라 그대로 발행한다.
-    """
-    if not _publishable(tank_kh):
-        return                                    # None(값 없음)만 제외 — 음수(미평탄)·0(에러)도 발행
-    user, pw, mac, tls_verify = _reefcore_creds()
-    if not user or not pw:
-        return                                    # opt-in: 자격 미설정이면 비활성
-    try:
-        import ssl as _ssl
-        import paho.mqtt.client as _mqtt
-        topic = f"reefcore-checker-{mac[-6:]}/sensor/{'_' * 16}/state"   # '최근 측정값'
-        summary = f"dKH: {tank_kh:.2f} dKH | {temp:.1f}°C @ {datetime.now():%Y-%m-%d %H:%M}"
-        try:
-            cl = _mqtt.Client(_mqtt.CallbackAPIVersion.VERSION2,
-                              client_id='reefwiz-bridge', clean_session=True)
-        except AttributeError:
-            cl = _mqtt.Client(client_id='reefwiz-bridge', clean_session=True)  # paho-mqtt 1.x
-        cl.username_pw_set(user, pw)
-        if tls_verify:
-            cl.tls_set(cert_reqs=_ssl.CERT_REQUIRED)   # 인증서 검증 ON (브로커 인증서 갱신 후)
-        else:
-            cl.tls_set(cert_reqs=_ssl.CERT_NONE)       # 브로커 인증서 만료 상태 → 검증 생략
-            cl.tls_insecure_set(True)
-        cl.connect('reef.anih.net', 8883, keepalive=30)
-        cl.loop_start()
-        info = cl.publish(topic, summary, qos=1, retain=False)
-        info.wait_for_publish(timeout=10)
-        cl.loop_stop(); cl.disconnect()
-        print(f"[reefCore] 발행: {summary}" if info.rc == 0
-              else f"[reefCore] 발행 실패 rc={info.rc}")
-    except Exception as e:
-        print(f"[reefCore] 발행 건너뜀(측정엔 영향 없음): {e}")
-
-
 def last_dat_is_error():
     """dkh.dat 마지막(비어있지 않은) 줄이 에러 표식(5개 값 전부 0)인지.
     파일 없음/빈 파일/파싱 실패면 False(정상 측정 진행)."""
@@ -433,7 +350,7 @@ def ensure_aeration_on(ser, where=''):
     배경: send() 는 '참조ON' 응답을 SEND_RETRY_MAX 회 재시도해도 못 받으면 예외 없이 (부분/빈)
     리스트를 조용히 리턴한다. 이전엔 ron 호출부가 그 반환값을 안 봐서, read 직전 airoff 로 폭기가
     꺼진 상태로 재폭기가 유실돼도 어디에도 안 남았다(사전폭기 진입 전 유실 시 25분 사전폭기 전체가
-    폭기 없이 흐름 → 미평형 편향이 조용히 발행·도저 전파). 여기서 반환값을 검사해 감지·재점화·경고한다.
+    폭기 없이 흐름 → 미평형 편향이 조용히 기록·도저 전파). 여기서 반환값을 검사해 감지·재점화·경고한다.
     ron 은 래칭이라 사전폭기 구간엔 1회 확인이면 폭기가 그 phase 내내 유지된다."""
     tag = f" ({where})" if where else ''
     for attempt in (1, 2):
@@ -1069,8 +986,8 @@ def run_measurement(ser, tank_dkh=None):
             if ref_kh is None:
                 raise RuntimeError("calref 실패 — 새 refDKH 파싱 실패(범위 0.5~30.0 또는 응답 이상)")
             # ★수조 dKH 는 펌웨어 echo(수조dKH) 대신 --setref 로 입력한 실측값(tank_dkh)을 정본으로 쓴다.
-            #   평탄 미도달이면 calkh 와 동일하게 음수(-) 표식(값 크기=입력값 유지) → dkh.dat·reefCore 둘 다
-            #   음수로 발행돼 값만으로 미평탄 식별. 에러 표식(전부 0)과는 구분돼 래치 안 걸림.
+            #   평탄 미도달이면 calkh 와 동일하게 음수(-) 표식(값 크기=입력값 유지) → dkh.dat 에
+            #   음수로 기록돼 값만으로 미평탄 식별. 에러 표식(전부 0)과는 구분돼 래치 안 걸림.
             tank_kh = tank_dkh if plateau_ok else -abs(tank_dkh)
             print("\n" + "=" * 40)
             print("ref dKH 교정 결과 (calref)")
@@ -1125,7 +1042,7 @@ def main():
                         help=f'시리얼 포트(기본 {PORT})')
     parser.add_argument('--setref', type=float, default=None, dest='tank_dkh', metavar='수조dKH',
                         help='수조 실측 dKH. 지정 시 calref 모드 — 이 값을 setref 로 기록하고 '
-                             'calref 로 ref dKH 를 역산·저장한다. 측정 결과도 dkh.dat·reefCore 에 '
+                             'calref 로 ref dKH 를 역산·저장한다. 측정 결과도 dkh.dat 에 '
                              '기록하며, 이때 수조 dKH 는 이 입력값을 쓴다. 미지정 시 calkh 모드.')
     a = parser.parse_args()
     port = a.port
@@ -1145,14 +1062,13 @@ def main():
         print(f"기록 파일: {DAT_FILE}")
     print(f"측정 시작: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    # ★에러 래치(calkh·calref 공통): 마지막 줄이 에러 표식(전부 0)이면 측정하지 않고 에러 표식만 재기록·발행.
+    # ★에러 래치(calkh·calref 공통): 마지막 줄이 에러 표식(전부 0)이면 측정하지 않고 에러 표식만 재기록.
     #   (수동으로 마지막 에러 줄을 지우기 전까지 매 실행 반복 — 오류 상태 무인 반복측정 방지)
     #   ★calref 도 calkh 와 동일하게 래치 적용(에러 처리 완전 일치 → 상황 파악 직관화).
     if last_dat_is_error():
         print("[중단] dkh.dat 마지막 줄이 에러 표식(전부 0) — 측정 생략, 에러 표식 재기록.")
         print("       수동으로 마지막 에러 줄을 제거하기 전까지 매 실행 반복됩니다.")
         log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0)
-        publish_to_reefcore(0.0, 0.0)               # 0=에러도 reefCore 에 발행(상태 전달)
         return
 
     result = None
@@ -1169,22 +1085,20 @@ def main():
     except Exception as e:
         print(f"[ERR] 예외 발생: {e}")
 
-    # calref 전용 안내(EEPROM 저장 여부) — 데이터 기록·발행은 아래서 calkh 와 완전 동일하게 처리.
+    # calref 전용 안내(EEPROM 저장 여부) — 데이터 기록은 아래서 calkh 와 완전 동일하게 처리.
     if calref:
         if result and result[2] is not None:
             print(f"\n[완료] ref dKH 가 {result[2]:.3f} dKH 로 EEPROM 에 저장되었습니다.")
         else:
             print("\n[실패] ref dKH 교정이 완료되지 않았습니다(위 로그 확인).")
 
-    # ★결과 저장·발행 — calkh·calref 완전 일치:
-    #   완전한 결과면 측정/입력값 기록·발행(음수=미평탄도 발행), 아니면 0.0 에러 표식 기록·발행.
+    # ★결과 저장 — calkh·calref 완전 일치:
+    #   완전한 결과면 측정/입력값 기록(음수=미평탄도 기록), 아니면 0.0 에러 표식 기록.
     #   (calref: result=(ref_ph, tank_ph, ref_kh=새 refDKH, tank_kh=입력값(미평탄이면 음수), temp))
     if result and all(v is not None for v in result):
         log_kh(hour, *result)
-        publish_to_reefcore(result[3], result[4])   # tank_kh(양수/음수=미평탄), temp → reefCore(best-effort)
     else:
         log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0)
-        publish_to_reefcore(0.0, 0.0)               # 0=에러도 reefCore 에 발행(상태 전달)
 
 
 if __name__ == '__main__':
