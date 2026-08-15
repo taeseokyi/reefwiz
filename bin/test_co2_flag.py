@@ -8,9 +8,10 @@
   [1] classify_co2_suspect 단위 — 임계·AND 결합·판정 불능 입력 안전성
   [2] 소급 검증 — 실제 data/dkh_plateau_archive.jsonl 에서 기대 런만 True
       (2026-07-13 수동 분석과의 일치를 상설 테스트로 고정)
-  [3] make_dkh_json (date,hh) 매칭 — 주입·결번 생략·--plateau 하위호환
+  [3] make_dkh_json (date,hh) 매칭 — 주입·결번 생략·--plateau 하위호환·최근 N일 컷
   [4] sync_dkh_dat lazy 백필 — 필드 부여·upsert/14일(날짜 기준) 잘림 불변
   [5] doser_adjust 접미 정렬·제외 — k 오프셋, 폴백, 인덱스 간격 보존, 가드
+  [5b] doser_adjust 창·기울기 — dkh.dat 날짜 컬럼 기준(회차 근사 폐기, 2026-08-16)
   [6] 스모크 — 실제 docs/dkh_series.json + data/dkh.dat 로 정렬 성립
   [7] plan_lrt — 0=정지(lrt 0)·(0,1.5)→하한·범위 클램프 (2026-07-24 수동 정지)
   [8] compute 정지(0) 유지 가드 — 멈춘 도저 자동 재가동 금지·양수 경로 회귀 (2026-07-27)
@@ -181,24 +182,29 @@ def run_make(dat_text, argv_extra, cwd):
 
 def test_make_json():
     print("\n[3] make_dkh_json --plateau (date,hh) 매칭")
-    dat = ("05 7.8 7.7 8.83 7.219 28.8\n"   # git 이력 없음 → date 없음 → 매칭 불가 검증용
-           "13 7.8 7.7 8.83 7.328 28.8\n")
+    # ★파일의 날짜 컬럼으로 곧바로 매칭한다(2026-08-16~) — git blame 복원 경로 없음
+    dat = ("2026-07-08 05 7.8 7.7 8.83 7.219 28.8\n"
+           "2026-07-08 13 7.8 7.7 8.83 7.328 28.8\n")
     with tempfile.TemporaryDirectory() as td:
-        # date 없는 행(git 이력 없음)은 매칭 불가 → 필드 생략
         hist = [dict(mk_run(33, -20), run_started="2026-07-08 05:00:02", co2_suspect=True, ref_net_mph=-20)]
         hp = os.path.join(td, "hist.json")
         with open(hp, "w") as f:
             json.dump(hist, f)
         series, latest = run_make(dat, ["--plateau", hp], td)
-        check("date 없으면 매칭 불가 → 필드 생략",
-              all("co2_suspect" not in r for r in series), json.dumps(series))
+        check("파일 날짜로 (date,hh) 매칭 주입",
+              series[0].get("co2_suspect") is True, json.dumps(series))
+        check("이력에 없는 회차는 필드 생략", "co2_suspect" not in series[1], json.dumps(series))
+        check("latest 에 date 실림", latest.get("date") == "2026-07-08", json.dumps(latest))
         # --plateau 미지정 = 현행과 동일(하위호환)
         series2, _ = run_make(dat, [], td)
         check("--plateau 미지정 시 현행 출력과 동일(필드 없음)",
               all("co2_suspect" not in r for r in series2))
+        # 날짜 없는 구형식 행은 읽히되 매칭 불가 → 필드 생략(추측 복원 안 함)
+        series3, _ = run_make("05 7.8 7.7 8.83 7.219 28.8\n", ["--plateau", hp], td)
+        check("구형식 행은 날짜 추측 없이 필드 생략",
+              len(series3) == 1 and "co2_suspect" not in series3[0] and "date" not in series3[0],
+              json.dumps(series3))
 
-    # date 매칭은 plateau_flags 단위 + 수동 주입 경로로 검증(같은 코드 경로,
-    # git 이력 없는 임시 파일로는 date 복원이 안 되므로)
     import make_dkh_json
     with tempfile.TemporaryDirectory() as td:
         hp = os.path.join(td, "hist.json")
@@ -250,8 +256,11 @@ def test_make_json():
     got = make_dkh_json.slice_recent_days(mk_rows(dense), 14)
     check("추가 측정한 날 있어도 14일치 전부 보존", len(got) == 45 and got[0]["date"] == "2026-08-01",
           f"{len(got)}행, 시작 {got[0]['date']}")
-    check("날짜 하나도 없으면 None(회수 근사로 폴백)",
+    check("날짜 하나도 없으면 None(호출부가 자르지 않고 전 구간)",
           make_dkh_json.slice_recent_days([{"line": 1, "hh": 5}], 14) is None)
+    check("날짜 없는 행은 창 밖(섞여 있어도 새어들지 않음)",
+          [r.get("date") for r in make_dkh_json.slice_recent_days(
+              [{"hh": 5}, {"date": "2026-08-15"}], 3)] == ["2026-08-15"])
     # 순서가 뒤섞여도 창 밖 날짜는 새어 들어오지 않는다
     mixed = [{"date": "2026-08-15"}, {"date": "2026-08-01"}, {"date": "2026-08-14"}]
     check("역순 항목 섞여도 창 밖 배제",
@@ -358,10 +367,10 @@ def _mk_log(run_started, flat_n, net_mph):
 def dat_text(rows, days=None):
     """rows=[(hh, tank_kh, temp)] → dkh.dat 텍스트.
 
-    days 를 주면 신형식(날짜 컬럼, 2026-08-16~), 안 주면 구형식 — 두 형식이 모두
-    읽히는지 확인하려고 헬퍼 하나로 둘 다 낸다.
+    days 를 주면 그 날짜로, 생략하면 05/13/21시 하루 3회로 2026-08-01 부터 연속해서
+    붙인다(창 계산 테스트가 쓰는 기본 시간축).
     """
-    days = days or [None] * len(rows)
+    days = days or [f"2026-08-{1 + i // 3:02d}" for i in range(len(rows))]
     return "".join(
         dkh_dat.format_line(d, hh, 7.800, 7.700, 8.830, float(kh), float(temp)) + "\n"
         for d, (hh, kh, temp) in zip(days, rows))
@@ -395,10 +404,11 @@ def test_doser():
         with open(dat, "w") as f:
             f.write(dat_text(base))
         lines = doser_adjust.read_dat_lines(dat)
+        rd = doser_adjust.build_row_days(lines)   # 창은 파일의 날짜 컬럼으로만 자른다
         series = series_of(base[:-1], suspect_idx={0, 3, 6})
         excl = doser_adjust.fetch_co2_excluded(lines, series=series)
         check("k=1 정렬 성공", excl == {0, 3, 6}, str(excl))
-        pts, n_co2 = doser_adjust.read_recent_kh(dat, rows=12, co2_excluded=excl)
+        pts, n_co2 = doser_adjust.read_recent_kh(rd, dat, co2_excluded=excl)
         check("창 안 제외 수=3", n_co2 == 3, str(n_co2))
         check("제외 행이 pts 에서 빠짐", all(i not in (0, 3, 6) for i, _ in pts), str(pts))
         check("남은 행 인덱스 간격 보존(원위치 유지)",
@@ -424,10 +434,11 @@ def test_doser():
 
         # 에러 행(전부 0)이 로컬에 껴 있어도 정렬 유지(series 는 그 행이 없음)
         with_err = base[:6] + [(21, 0.0, 0.0)] + base[6:]
+        err_days = [f"2026-08-{1 + i // 3:02d}" for i in range(len(with_err))]
         with open(dat, "w") as f:
-            f.write(dat_text(with_err).replace(
-                dkh_dat.format_line(None, 21, 7.8, 7.7, 8.83, 0.0, 0.0),
-                dkh_dat.format_line(None, 21, 0.0, 0.0, 0.0, 0.0, 0.0)))
+            f.write(dat_text(with_err, err_days).replace(
+                dkh_dat.format_line(err_days[6], 21, 7.8, 7.7, 8.83, 0.0, 0.0),
+                dkh_dat.format_line(err_days[6], 21, 0.0, 0.0, 0.0, 0.0, 0.0)))
         lines_err = doser_adjust.read_dat_lines(dat)
         excl_err = doser_adjust.fetch_co2_excluded(lines_err, series=series_of(base[:-1], suspect_idx={6}))
         # base[6:] 는 에러 행 뒤라 로컬 줄 인덱스가 +1 밀림 → {7}
@@ -444,8 +455,8 @@ def test_doser():
         # 수준(최근 3점 중앙값) 반영 — 마지막 3 유효점 중 1개 제외 시
         with open(dat, "w") as f:
             f.write(dat_text(base))
-        pts_all, _ = doser_adjust.read_recent_kh(dat, rows=12)
-        pts_ex, _ = doser_adjust.read_recent_kh(dat, rows=12, co2_excluded={9})
+        pts_all, _ = doser_adjust.read_recent_kh(rd, dat)
+        pts_ex, _ = doser_adjust.read_recent_kh(rd, dat, co2_excluded={9})
         import statistics
         lvl_all = statistics.median(kh for _, kh in pts_all[-3:])
         lvl_ex = statistics.median(kh for _, kh in pts_ex[-3:])
@@ -453,7 +464,7 @@ def test_doser():
               f"all={lvl_all} ex={lvl_ex}")
 
         # MIN_VALID 가드: 12행 중 5개 제외 → 7점 < 10
-        pts_few, n_few = doser_adjust.read_recent_kh(dat, rows=12, co2_excluded={0, 3, 6, 9, 1})
+        pts_few, n_few = doser_adjust.read_recent_kh(rd, dat, co2_excluded={0, 3, 6, 9, 1})
         check("제외 후 점수로 MIN_VALID 판단 가능", len(pts_few) == 7 and n_few == 5,
               f"{len(pts_few)}점/{n_few}제외")
         check("CO2_EXCLUDE_MAX 상수 존재(>9 중단 가드)", doser_adjust.CO2_EXCLUDE_MAX == 9)
@@ -461,97 +472,85 @@ def test_doser():
 
 # --------------------------- [5b] doser 창·기울기 = 날짜 기준 (2026-08-16)
 def test_doser_window_days():
-    print("\n[5b] doser_adjust 창·기울기 — 회차 근사가 아니라 날짜 기준")
-    # (날짜, hh, tank_kh) 로 dat + 원격 series 를 함께 만든다
-    def build(spec, remote_lag=1):
-        rows = [(hh, kh, 29.0) for _, hh, kh in spec]
-        lines = [ln.split() for ln in dat_text(rows).splitlines()]
-        series = [{"hh": hh, "tank_kh": abs(kh), "temp": 29.0, "date": d,
-                   "ref_kh": 8.83, "is_flat": True}
-                  for d, hh, kh in (spec[:-remote_lag] if remote_lag else spec)]
-        return lines, series
+    print("\n[5b] doser_adjust 창·기울기 — 회차 근사가 아니라 dkh.dat 의 날짜 컬럼")
+
+    def build(spec):
+        """spec=[(날짜, hh, tank_kh)] → (split 된 dat 줄, 파일 경로 쓰기용 텍스트)."""
+        text = dat_text([(hh, kh, 29.0) for _, hh, kh in spec],
+                        days=[d for d, _, _ in spec])
+        return [ln.split() for ln in text.splitlines()], text
 
     days = [f"2026-08-{d:02d}" for d in range(1, 15)]
     full = [(d, hh, 7.30) for d in days for hh in (5, 13, 21)]
 
-    # ① 주 경로 — dkh.dat 자체의 날짜 컬럼(2026-08-16 신형식). 원격 정렬 불필요.
-    dated_lines = [ln.split() for ln in
-                   dat_text([(hh, kh, 29.0) for _, hh, kh in full],
-                            days=[d for d, _, _ in full]).splitlines()]
-    rd_file = doser_adjust.build_row_days(dated_lines)
-    check("신형식 파일만으로 날짜 맵(원격 정렬 없이)",
-          rd_file is not None and len(rd_file) == len(full), str(rd_file and len(rd_file)))
+    lines, _ = build(full)
+    rd = doser_adjust.build_row_days(lines)
+    check("파일 날짜만으로 시간축 생성(원격 정렬 불필요)",
+          rd is not None and len(rd) == len(full), str(rd and len(rd)))
     check("파일 날짜 그대로 사용",
-          rd_file and rd_file[len(dated_lines) - 1] == datetime.date(2026, 8, 14),
-          str(rd_file and rd_file[len(dated_lines) - 1]))
-
-    # ② 구형식(날짜 없음) — 종전 원격 series 접미 정렬 폴백이 그대로 동작
-    lines, series = build(full)
-    aligned = doser_adjust.align_series(lines, series=series)
-    rd = doser_adjust.build_row_days(lines, aligned)
-    check("구형식+원격 정렬 → 날짜 맵 생성", rd is not None and len(rd) == len(full),
-          str(rd and len(rd)))
-    check("원격에 없는 최신 행도 날짜 부여(hh 단조성)",
-          rd and rd[len(lines) - 1] == datetime.date(2026, 8, 14), str(rd and rd[len(lines) - 1]))
-    check("두 경로가 같은 날짜 맵을 준다", rd == rd_file, "신·구 경로 불일치")
-
-    def window_days(lines, rd, path):
-        pts, _ = doser_adjust.read_recent_kh(path, row_days=rd)
-        return sorted({rd[i] for i, _ in pts})
+          rd and rd[len(lines) - 1] == datetime.date(2026, 8, 14),
+          str(rd and rd[len(lines) - 1]))
+    check("날짜 없는 구형식 행만 있으면 None(근사 금지 → 호출부 중단)",
+          doser_adjust.build_row_days(
+              [ln.split() for ln in dat_text([(5, 7.3, 29.0)], days=[None]).splitlines()]) is None)
+    check("에러 행(전부 0)은 시간축에서 제외",
+          doser_adjust.build_row_days(
+              [l.split() for l in ["2026-08-01 05 0.000 0.000 0.000 0.000 0.0",
+                                   "2026-08-01 13 7.8 7.7 8.83 7.3 29.0"]]) == {1: datetime.date(2026, 8, 1)})
 
     with tempfile.TemporaryDirectory() as td:
         def write(spec):
             p = os.path.join(td, "dkh.dat")
             with open(p, "w") as f:
-                f.write(dat_text([(hh, kh, 29.0) for _, hh, kh in spec]))
+                f.write(build(spec)[1])
             return p
 
-        p = write(full)
-        got = window_days(lines, rd, p)
+        def window_days(spec):
+            lns, _ = build(spec)
+            rdays = doser_adjust.build_row_days(lns)
+            pts, _ = doser_adjust.read_recent_kh(rdays, write(spec))
+            return sorted({rdays[i] for i, _ in pts}), pts
+
+        got, _ = window_days(full)
         check("정상 데이터 → 창 정확히 7일", len(got) == 7 and got[-1].isoformat() == "2026-08-14",
               str(got))
         check("창 밖(8/7 이전) 미포함", got[0].isoformat() == "2026-08-08", str(got))
 
         # 결측: 8/10 하루 통째로 빠짐 → 회차 근사(21행)라면 8/7 까지 거슬러 올라갔을 상황
-        gap = [(d, hh, 7.30) for d in days for hh in (5, 13, 21) if not (d == "2026-08-10")]
-        lines_g, series_g = build(gap)
-        rd_g = doser_adjust.build_row_days(lines_g, doser_adjust.align_series(lines_g, series=series_g))
-        got_g = window_days(lines_g, rd_g, write(gap))
+        gap = [(d, hh, 7.30) for d in days for hh in (5, 13, 21) if d != "2026-08-10"]
+        got_g, _ = window_days(gap)
         check("결측일 있어도 창은 7일 안(과거로 안 늘어남)",
               got_g[0].isoformat() == "2026-08-08" and len(got_g) == 6, str(got_g))
 
         # 추가 측정: 8/13 에 2회 더 → 회차 근사라면 창 앞쪽이 밀려 잘렸을 상황
         extra = [(d, hh, 7.30) for d in days
                  for hh in ((1, 5, 9, 13, 21) if d == "2026-08-13" else (5, 13, 21))]
-        lines_e, series_e = build(extra)
-        rd_e = doser_adjust.build_row_days(lines_e, doser_adjust.align_series(lines_e, series=series_e))
-        pts_e, _ = doser_adjust.read_recent_kh(write(extra), row_days=rd_e)
-        got_e = sorted({rd_e[i] for i, _ in pts_e})
+        got_e, pts_e = window_days(extra)
         check("추가 측정해도 창은 7일 유지(앞쪽 안 밀림)",
               got_e[0].isoformat() == "2026-08-08" and len(got_e) == 7, str(got_e))
         check("추가 측정분이 창 안에 포함(23점)", len(pts_e) == 23, f"{len(pts_e)}점")
 
-    # 기울기: 결측 없는 창이면 8h 가정과 실제 시각이 같은 답을 준다(회귀 안전)
+    # 기울기 = 실제 측정 시각 간격. 05/13/21시로만 채운 창은 8h 균일이라 종전 근사와
+    # 같은 답이 나오지만(회귀 안전), 결측이 끼면 실제 간격만이 정답이다.
     pts = [(i, 7.0 + 0.01 * i) for i in range(21)]
     times = {i: 738000 + i / 3.0 for i in range(21)}  # 8h = 1/3일 간격
-    check("균일 8h 창 → 실시간·근사 동일",
-          abs(doser_adjust.theil_sen_per_day(pts, times)
-              - doser_adjust.theil_sen_per_day(pts)) < 1e-9)
-    # 결측이 있으면 달라진다 — 실제 간격이 답이다
+    check("균일 8h 창 → 0.03/일", abs(doser_adjust.theil_sen_per_day(pts, times) - 0.03) < 1e-9,
+          str(doser_adjust.theil_sen_per_day(pts, times)))
     pts_gap = [(0, 7.0), (1, 7.01), (5, 7.05)]      # 인덱스는 붙어 있지만
     times_gap = {0: 738000.0, 1: 738000 + 1 / 3, 5: 738003.0}  # 실제로는 3일 뒤
     real = doser_adjust.theil_sen_per_day(pts_gap, times_gap)
-    approx = doser_adjust.theil_sen_per_day(pts_gap)
-    check("결측 구간에서 실시간 기울기 ≠ 8h 근사", abs(real - approx) > 1e-6,
-          f"real={real:.4f} approx={approx:.4f}")
-    # 쌍별 기울기 0.03 / 0.0167 / 0.015 → 중앙값 0.0167 (인덱스 근사는 0.03/0.01/0.0075)
+    # 쌍별 기울기 0.03 / 0.0167 / 0.015 → 중앙값 0.0167 (폐기된 인덱스 근사는 0.01)
     check("실시간 기울기 = 실제 간격 기준 중앙값", abs(real - 0.05 / 3) < 1e-9, f"{real}")
+    check("행 간격 8h 근사 경로는 제거됨(times 필수)",
+          _raises(lambda: doser_adjust.theil_sen_per_day(pts_gap, {})))
 
-    # 폴백 — 정렬 실패(aligned=None)면 날짜 맵도 None → 종전 회차 근사 경로
-    check("정렬 실패 → row_days None(회차 근사 폴백)",
-          doser_adjust.build_row_days(lines, None) is None)
-    check("date 필드 없는 series → None",
-          doser_adjust.build_row_days(lines, {0: {"hh": 5}}) is None)
+
+def _raises(fn):
+    try:
+        fn()
+    except Exception:
+        return True
+    return False
 
 
 # ------------------------------------------------------------- [6] 실데이터 스모크
@@ -566,9 +565,15 @@ def test_smoke():
     excl = doser_adjust.fetch_co2_excluded(lines, series=series)
     # 저장소의 dat 과 series 는 같은 커밋 계열이라 k=0 부근에서 정렬돼야 정상
     check("실데이터 정렬 성공(None 아님)", excl is not None, "정렬 실패")
-    if excl is not None:
-        pts, n_co2 = doser_adjust.read_recent_kh(DAT_FILE, co2_excluded=excl)
-        print(f"      (실데이터: 창 21행 중 CO₂ 제외 {n_co2}점, 잔여 {len(pts)}점)")
+    row_days = doser_adjust.build_row_days(lines)
+    check("실데이터 전 행에 날짜(시간축 생성)", row_days is not None and len(row_days) > 0,
+          "날짜 있는 행 없음")
+    if excl is not None and row_days:
+        pts, n_co2 = doser_adjust.read_recent_kh(row_days, DAT_FILE, co2_excluded=excl)
+        win = sorted({row_days[i] for i, _ in pts})
+        print(f"      (실데이터: 창 {win[0]}~{win[-1]} 에서 CO₂ 제외 {n_co2}점, 잔여 {len(pts)}점)")
+        check(f"창이 정확히 {doser_adjust.WINDOW_DAYS}일 안",
+              (win[-1] - win[0]).days < doser_adjust.WINDOW_DAYS, f"{win[0]}~{win[-1]}")
         check("제외 후에도 MIN_VALID 충족", len(pts) >= doser_adjust.MIN_VALID,
               f"{len(pts)} < {doser_adjust.MIN_VALID}")
 
