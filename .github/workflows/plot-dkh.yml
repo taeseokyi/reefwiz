@@ -19,8 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 날짜 복원(--dates-from-git)이 blame으로 전체 이력을 본다
 
       - uses: actions/setup-python@v5
         with:
@@ -29,10 +27,8 @@ jobs:
       - name: 최신값·시리즈 JSON 생성
         run: |
           # 최근 14일 — dkh.dat 이 날짜 컬럼을 직접 갖는다(2026-08-16~, dkh_dat.py).
-          # --dates-from-git 은 날짜 없는 구형식 행이 남아 있을 때만 동작하는 폴백이고,
-          # --recent 42 는 그 복원마저 실패했을 때의 최후 회수 근사다.
           # --plateau: 평탄 이력의 CO₂ 편향 의심 판정(co2_suspect)을 (date,hh) 매칭으로 주입
-          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent-days 14 --recent 42 --dates-from-git --plateau docs/dkh_plateau_history.json
+          python3 bin/make_dkh_json.py data/dkh.dat --json docs/dkh_latest.json --series-json docs/dkh_series.json --recent-days 14 --plateau docs/dkh_plateau_history.json
 
       - name: 변경분 커밋
         run: |

@@ -25,10 +25,11 @@
 - ★CO₂ 편향 의심 제외(2026-07-13): 새벽 실내 CO₂ 축적으로 dKH가 −0.07~−0.24 낮게
   나오는 측정(판정=ref 곡선 형태, parse_plateau_log.classify_co2_suspect 단일 소스)을
   추세·수준 계산에서 제외한다. 플래그는 GitHub 의 docs/dkh_series.json(co2_suspect
-  필드)에서 읽고, 날짜 없는 로컬 dkh.dat 과는 값 시퀀스 접미(suffix) 정렬로 대응
-  — 실행 시점(측정 직후, sync 전)에 원격에 이번 회차 행이 없는 게 정상이라 오프셋
-  k를 0부터 늘려가며 맞춘다. 조회/정렬 실패 시 제외 없이 종전 계산으로 폴백(권고
-  전용이라 안전), 제외가 창의 다수(>CO2_EXCLUDE_MAX)면 판정기 오작동 의심으로 중단.
+  필드)에서 읽고, 그 판정은 평탄 곡선에서 나오므로 로컬 dkh.dat 에는 없다 — 값
+  시퀀스 접미(suffix) 정렬로 로컬 행과 짝짓는다(실행 시점=측정 직후·sync 전이라
+  원격에 이번 회차 행이 없는 게 정상 → 오프셋 k를 0부터 늘려가며 맞춤). 조회/정렬
+  실패 시 제외 없이 계산으로 폴백(권고 전용이라 안전), 제외가 창의 다수
+  (>CO2_EXCLUDE_MAX)면 판정기 오작동 의심으로 중단.
 - 기록: C:\\dkh\\work\\doser_history.json (sync가 docs/로 복사→대시보드 카드),
   상세 로그 C:\\dkh\\doser_adjust.log.
 - ★목표 dKH 설정(2026-07-06): 대시보드가 docs/doser_config.json 에 {target_dkh} 를
@@ -91,11 +92,9 @@ LRT_MAX = 24000           # 사용자 지정 하드 상한 = 현재의 3배(원�
 STEP_MAX_FRAC = 0.30      # 1회 조정 최대 ±30%
 DEADBAND_MS = 200
 
-WINDOW_DAYS = 7           # ★수준·추세 창 = 7일(날짜 기준). 회차 근사 아님(2026-08-16)
-ROWS = 21                 # 폴백 전용 — 날짜 정렬 실패 시에만 쓰는 "21행 ≈ 7일" 근사
+WINDOW_DAYS = 7           # ★수준·추세 창 = 7일. dkh.dat 의 날짜 컬럼으로 자른다(2026-08-16)
 MIN_VALID = 10
 VALID_LO, VALID_HI = 4.0, 12.0
-ROW_DAYS = 8.0 / 24.0     # 폴백 전용 — 날짜를 모를 때의 행 간격 8시간 가정
 
 CO2_EXCLUDE_MAX = 9       # 창 안 CO₂ 제외가 이보다 많으면 판정기 오작동 의심 → 중단
 CO2_ALIGN_MIN_OVERLAP = 3 # 접미 정렬로 인정할 최소 겹침 행 수
@@ -152,14 +151,13 @@ def read_dat_lines(path=None):
         return [ln.split() for ln in f.read().splitlines() if ln.strip()]
 
 
-def read_recent_kh(path=None, rows=ROWS, co2_excluded=None, row_days=None,
-                   days=WINDOW_DAYS):
+def read_recent_kh(row_days, path=None, co2_excluded=None, days=WINDOW_DAYS):
     """최근 창의 (줄 인덱스, tank_kh) 유효값만. 0.0=에러, 음수=미평탄 제외.
 
-    ★창 산정(2026-08-16): row_days(줄 인덱스→날짜, build_row_days)가 있으면 **날짜**로
+    ★창 산정(2026-08-16): row_days(줄 인덱스→날짜, build_row_days)로 **날짜**를 보고
     자른다 — 마지막 측정일 포함 `days`일. 측정이 빠진 날이 있어도 창이 과거로 늘어나지
-    않고, 추가 측정을 돌린 날이 있어도 창 안쪽이 밀려나지 않는다. 날짜를 못 얻으면
-    (원격 series 조회·정렬 실패) 종전 "마지막 rows행" 회차 근사로 폴백한다.
+    않고, 추가 측정을 돌린 날이 있어도 창 안쪽이 밀려나지 않는다. 날짜를 모르는 행
+    (구형식 백업본)은 창 밖으로 본다.
 
     co2_excluded(줄 인덱스 집합, fetch_co2_excluded 반환)에 든 행은 CO₂ 편향 의심으로
     추가 제외한다. 인덱스는 파일 전체 기준이며 제외돼도 건너뛰기만 하므로 시간축은
@@ -167,13 +165,8 @@ def read_recent_kh(path=None, rows=ROWS, co2_excluded=None, row_days=None,
     반환: (pts, 창 안에서 CO₂ 로 제외된 행 수)
     """
     lines = read_dat_lines(path)
-    if row_days:
-        anchor = max(row_days.values())
-        cut = (anchor - timedelta(days=days - 1))
-        window = [i for i in range(len(lines))
-                  if i in row_days and row_days[i] >= cut]
-    else:
-        window = list(range(max(0, len(lines) - rows), len(lines)))
+    cut = max(row_days.values()) - timedelta(days=days - 1)
+    window = [i for i in range(len(lines)) if i in row_days and row_days[i] >= cut]
     pts, n_co2 = [], 0
     for i in window:
         row = dkh_dat.parse_parts(lines[i])
@@ -198,13 +191,13 @@ def align_series(lines, series=None):
     """원격 dkh_series.json 을 로컬 dkh.dat 줄에 접미 정렬 → {줄 인덱스: 원격 행}.
 
     CO₂ 편향 판정(co2_suspect)은 평탄 곡선에서 나오므로 로컬 dkh.dat 에는 없다 —
-    그 값을 가져오려면 원격 series 와 행을 짝지어야 한다. 로컬에 (신형식이라도) 회차
-    식별자가 없으니 (hh, |tank_kh|, temp) 값 시퀀스의 접미 일치로 정렬한다. 실행 시점(측정
-    직후, sync 전)에 원격에는 이번 회차 행이 아직 없으므로 오프셋 k(원격에 없는
-    최신 로컬 행 수)를 0부터 CO2_ALIGN_MAX_LAG 까지 늘려가며 최소 k 를 채택한다.
-    원격에 없는 최신 k행은 여기 매핑에 안 들어간다(미의심 취급 + 날짜는 build_row_days
-    가 hh 단조성으로 이어 붙인다). 실패(조회 불가/정렬 불일치) 시 None — 호출부는
-    제외 없이, 창도 회차 근사로 폴백한다.
+    그 값을 가져오려면 원격 series 와 행을 짝지어야 한다(날짜는 파일이 직접 갖고
+    있으니 여기서 얻을 게 아니다). 로컬에 회차 식별자가 없으니 (hh, |tank_kh|, temp)
+    값 시퀀스의 접미 일치로 정렬한다. 실행 시점(측정 직후, sync 전)에 원격에는 이번
+    회차 행이 아직 없으므로 오프셋 k(원격에 없는 최신 로컬 행 수)를 0부터
+    CO2_ALIGN_MAX_LAG 까지 늘려가며 최소 k 를 채택한다. 원격에 없는 최신 k행은 여기
+    매핑에 안 들어간다(미의심 취급). 실패(조회 불가/정렬 불일치) 시 None — 호출부는
+    CO₂ 제외 없이 계산한다.
     series 인자는 테스트용 주입(None 이면 GitHub API 조회).
     """
     if series is None:
@@ -246,14 +239,12 @@ def fetch_co2_excluded(lines, series=None, aligned=None):
     return {i for i, row in aligned.items() if row.get("co2_suspect")}
 
 
-def build_row_days(lines, aligned=None):
+def build_row_days(lines):
     """{줄 인덱스: 측정 날짜(date)} — 창을 날짜로 자르기 위한 시간축(2026-08-16).
 
-    ①우선 dkh.dat 자체의 날짜 컬럼을 읽는다(2026-08-16 도입, dkh_dat.py). 이게 사실이다.
-    ②날짜 없는 구형식 행만 원격 series 정렬(aligned)로 보완하고, 원격에도 없는 최신
-      k행은 마지막으로 아는 날짜에서 hh 단조성으로 이어 붙인다 — 하루 안에서 시각은
-      증가하므로 hh 가 늘지 않으면 날짜가 넘어간 것이다.
-    아무 경로로도 날짜를 못 얻으면 None → 호출부는 회차 근사로 폴백.
+    dkh.dat 의 날짜 컬럼(dkh_dat.py)을 그대로 읽는다. 에러 행(전부 0)은 측정이 아니라
+    시간축에 넣지 않는다. 날짜 없는 구형식 행은 맵에 안 들어간다(창 밖 취급).
+    날짜를 가진 행이 하나도 없으면 None — 호출부는 근사하지 말고 중단할 것.
     """
     days = {}
     for i, parts in enumerate(lines):
@@ -263,28 +254,7 @@ def build_row_days(lines, aligned=None):
                 days[i] = date.fromisoformat(row["date"])
             except ValueError:
                 pass
-    for i, row in (aligned or {}).items():
-        if i in days:
-            continue
-        d = row.get("date")
-        if d:
-            try:
-                days[i] = date.fromisoformat(d)
-            except ValueError:
-                pass
-    if not days:
-        return None
-    # 정렬 뒤쪽(원격에 없는) 최신 행 이어 붙이기 — 에러 행(전부 0)은 측정이 아니므로 건너뛴다
-    last_idx = max(days)
-    cur_day, prev_hh = days[last_idx], _row_hh(lines[last_idx])
-    for i in range(last_idx + 1, len(lines)):
-        hh = _row_hh(lines[i])
-        if hh is None:
-            continue
-        if prev_hh is not None and hh <= prev_hh:
-            cur_day += timedelta(days=1)
-        days[i], prev_hh = cur_day, hh
-    return days
+    return days or None
 
 
 def _row_hh(parts):
@@ -295,17 +265,15 @@ def _row_hh(parts):
     return row["hh"]
 
 
-def theil_sen_per_day(pts, times=None):
+def theil_sen_per_day(pts, times):
     """쌍별 기울기 중앙값(dKH/일).
 
-    times({줄 인덱스: 일 단위 시각}, build_times)가 있으면 **실제 측정 시각 간격**을
-    쓴다(2026-08-16). 없으면 종전처럼 행 간격 8h 균일 가정으로 폴백 — 05/13/21시는
-    실제로 8h 간격이라 결측·추가 측정이 없는 창에서는 두 결과가 같다.
+    times({줄 인덱스: 일 단위 시각}, build_times) = **실제 측정 시각 간격**(2026-08-16).
+    종전의 "행 간격 8h 균일 가정" 근사는 폐기했다 — 05/13/21시가 실제로 8h 간격이라
+    결측 없는 창에서는 같은 답이지만, 결측·추가 측정이 있으면 시간축이 어긋난다.
     """
     def dt(i, j):
-        if times and i in times and j in times:
-            return times[j] - times[i]
-        return (j - i) * ROW_DAYS
+        return times[j] - times[i]
     slopes = [
         (kj - ki) / d
         for a, (i, ki) in enumerate(pts)
@@ -316,15 +284,12 @@ def theil_sen_per_day(pts, times=None):
 
 
 def build_times(lines, row_days):
-    """{줄 인덱스: 일 단위 시각} — 날짜(build_row_days)+측정 시각(HH)."""
-    if not row_days:
-        return None
-    times = {}
-    for i, d in row_days.items():
-        hh = _row_hh(lines[i])
-        if hh is not None:
-            times[i] = d.toordinal() + hh / 24.0
-    return times or None
+    """{줄 인덱스: 일 단위 시각} — 날짜(build_row_days)+측정 시각(HH).
+
+    row_days 의 행은 전부 파싱되는 측정 행이므로 키 집합은 row_days 와 같다
+    (theil_sen_per_day 가 창 안 모든 점의 시각을 찾을 수 있어야 한다).
+    """
+    return {i: d.toordinal() + _row_hh(lines[i]) / 24.0 for i, d in row_days.items()}
 
 
 def compute(level, slope, cur_lrt, target=TARGET_DKH):
@@ -585,14 +550,15 @@ def main():
 
     if "--dry-run" in sys.argv:
         lines = read_dat_lines()
-        aligned = align_series(lines)       # 조회/정렬 실패=None → 제외 없이·회차 근사로 폴백
-        co2 = fetch_co2_excluded(lines, aligned=aligned)
-        row_days = build_row_days(lines, aligned)
-        pts, n_co2 = read_recent_kh(co2_excluded=co2, row_days=row_days)
+        co2 = fetch_co2_excluded(lines)     # 조회/정렬 실패=None → CO₂ 제외 없이 계산
+        row_days = build_row_days(lines)
+        if not row_days:
+            print(f"{DAT_FILE} 에 날짜 있는 행이 없음 — 창을 자를 수 없다")
+            return
+        pts, n_co2 = read_recent_kh(row_days, co2_excluded=co2)
         co2_txt = ("CO₂ 플래그 조회 실패 — 제외 없음" if co2 is None
                    else f"CO₂ 의심 {n_co2}점 제외")
-        win_txt = (f"창 {WINDOW_DAYS}일(날짜 기준)" if row_days
-                   else f"창 최근 {ROWS}행(날짜 미상 — 회차 근사 폴백)")
+        win_txt = f"창 {WINDOW_DAYS}일(날짜 기준)"
         if len(pts) < MIN_VALID:
             print(f"유효 측정 부족: {len(pts)}/{MIN_VALID} | {win_txt} | {co2_txt}")
             return
@@ -623,15 +589,15 @@ def main():
         return
 
     lines = read_dat_lines()
-    aligned = align_series(lines)
-    co2 = fetch_co2_excluded(lines, aligned=aligned)
-    row_days = build_row_days(lines, aligned)
-    pts, n_co2 = read_recent_kh(co2_excluded=co2, row_days=row_days)
+    co2 = fetch_co2_excluded(lines)
+    row_days = build_row_days(lines)
+    if not row_days:
+        # 날짜 없이는 창도 기울기도 근사가 된다 — 근사 대신 중단하고 이력에 남긴다
+        record_abort("dkh.dat 에 날짜 있는 행이 없음 — 창을 날짜로 자를 수 없음")
+        return
+    pts, n_co2 = read_recent_kh(row_days, co2_excluded=co2)
     co2_note = ("CO₂ 플래그 조회 실패 — 제외 없이 계산" if co2 is None
                 else f"CO₂ 의심 {n_co2}점 제외" if n_co2 else "")
-    if not row_days:
-        # 창을 날짜로 못 자른 회차 — 이력에 남겨야 나중에 수치를 재해석할 수 있다
-        co2_note = (co2_note + " | " if co2_note else "") + f"창 회차 근사({ROWS}행) 폴백"
     if n_co2 > CO2_EXCLUDE_MAX:
         record_abort(f"CO₂ 제외 과다({n_co2}점>{CO2_EXCLUDE_MAX}) — 판정기 점검 필요")
         return

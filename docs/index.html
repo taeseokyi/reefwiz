@@ -387,24 +387,22 @@
   // 기준일 = 오늘이 아니라 "마지막으로 기록이 추가된 날". 오늘 회차가 아직
   // 없는 시간대(예: 도저 권고는 13:50경 생성)에 가장 오래된 하루가 잘려나가
   // N-1일치만 보이던 문제를 막는다.
+  // 모든 소스가 날짜를 직접 갖는다 — dkh_series.json 은 dkh.dat 의 날짜 컬럼
+  // (2026-08-16~), 평탄 이력은 run_started, 도저 이력은 ts. 회차 근사 폴백은 없다.
   const ymdLocal = (t) =>
     t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" +
     String(t.getDate()).padStart(2, "0");
   // arr = 시간 오름차순 배열, dayOf(x) = 그 항목의 "YYYY-MM-DD..." 문자열.
-  // perDayFallback: 날짜를 하나도 모를 때만 쓰는 회차 근사(없으면 자르지 않음).
-  const recentDays = (arr, days, dayOf, perDayFallback) => {
+  const recentDays = (arr, days, dayOf) => {
     const dayList = arr.map((x) => String(dayOf(x) || "").slice(0, 10));
     // 앵커는 최댓값 — 순서가 흐트러진 항목이 섞여도 "가장 최근 기록일"이 기준
     const last = dayList.filter(Boolean).sort().pop();
-    if (!last) return perDayFallback ? arr.slice(-days * perDayFallback) : arr.slice();
+    if (!last) return arr.slice();
     const cut = new Date(last + "T00:00:00");
     cut.setDate(cut.getDate() - (days - 1));
     const cutDay = ymdLocal(cut);
-    // 창내 첫 항목 이후만 보되(날짜 미상 항목도 그 뒤라면 함께 살림), 날짜를 아는
-    // 항목은 창 밖이면 무조건 뺀다 — 순서가 뒤섞여 있어도 창은 정확히 N일.
-    const start = dayList.findIndex((d) => d && d >= cutDay);
-    if (start < 0) return [];
-    return arr.filter((x, i) => i >= start && (!dayList[i] || dayList[i] >= cutDay));
+    // 날짜로만 판정 — 순서가 뒤섞여 있어도 창은 정확히 N일.
+    return arr.filter((x, i) => dayList[i] >= cutDay);
   };
   const daysCovered = (arr, dayOf) =>
     new Set(arr.map((x) => String(dayOf(x) || "").slice(0, 10)).filter(Boolean)).size;
@@ -417,9 +415,7 @@
       document.getElementById("temp").textContent = d.temp.toFixed(1) + "°C";
       const tankEl = document.getElementById("tankKh");
       if (!d.is_flat) tankEl.classList.add("not-flat");
-      const when = d.date
-        ? Number(d.date.slice(5, 7)) + "/" + Number(d.date.slice(8, 10)) + " " + d.hh + "시"
-        : d.hh + "시";
+      const when = Number(d.date.slice(5, 7)) + "/" + Number(d.date.slice(8, 10)) + " " + d.hh + "시";
       document.getElementById("updated").textContent =
         "최근 측정 " + when + (d.is_flat ? "" : " · 평탄 미도달") +
         (d.co2_suspect ? " · ⚠CO₂ 편향 의심" : "");
@@ -431,26 +427,20 @@
   fetch("dkh_series.json", { cache: "no-store" })
     .then((r) => r.json())
     .then((fullSeries) => {
-      // dkh.dat 에는 날짜가 없지만(시각만 기록) Actions 가 동기화 커밋 시각으로 date 를
-      // 복원해 붙여 준다 → 기간 버튼은 recentDays() 로 **날짜** 기준 컷.
-      // MEASURES_PER_DAY 는 date 복원이 통째로 실패했을 때만 쓰는 최후 근사다.
-      const MEASURES_PER_DAY = 3;
+      // 각 점의 date 는 dkh.dat 의 날짜 컬럼(2026-08-16~) 그대로 → 기간 버튼은
+      // recentDays() 로 **날짜** 기준 컷.
       let currentSeries = fullSeries;
       const axisLabel = (p) =>
-        (p.date ? Number(p.date.slice(5, 7)) + "/" + Number(p.date.slice(8, 10)) + " " : "") + p.hh + "시";
+        Number(p.date.slice(5, 7)) + "/" + Number(p.date.slice(8, 10)) + " " + p.hh + "시";
       const tooltipTitle = (p) =>
-        p.date
-          ? Number(p.date.slice(5, 7)) + "월 " + Number(p.date.slice(8, 10)) + "일 " + p.hh + "시 측정"
-          : "최근 측정 " + p.hh + "시";
+        Number(p.date.slice(5, 7)) + "월 " + Number(p.date.slice(8, 10)) + "일 " + p.hh + "시 측정";
       // 포인트 색: 평탄 미도달(빨강, 더 심각) > CO₂ 편향 의심(주황) > 정상(청록).
       // co2_suspect 는 Actions 가 평탄 이력에서 매칭해 붙임 — 없으면(과거 행) 미의심 취급.
       const pointColor = (p) => (!p.is_flat ? "#c0392b" : p.co2_suspect ? "#e08a2c" : "#12808f");
 
       const allBtn = document.querySelector('#dkhRangeToggle .range-btn[data-range="all"]');
       if (allBtn) {
-        const covered = daysCovered(fullSeries, (p) => p.date);
-        allBtn.textContent =
-          "전체(" + (covered || Math.round(fullSeries.length / MEASURES_PER_DAY)) + "일)";
+        allBtn.textContent = "전체(" + daysCovered(fullSeries, (p) => p.date) + "일)";
       }
 
       const ctx = document.getElementById("dkhChart");
@@ -534,7 +524,7 @@
         currentSeries =
           range === "all"
             ? fullSeries
-            : recentDays(fullSeries, Number(range), (p) => p.date, MEASURES_PER_DAY);
+            : recentDays(fullSeries, Number(range), (p) => p.date);
         chart.data.labels = currentSeries.map(axisLabel);
         chart.data.datasets[0].data = currentSeries.map((p) => p.tank_kh);
         chart.data.datasets[0].pointBackgroundColor = currentSeries.map(pointColor);
@@ -734,7 +724,6 @@
       //    (중복 fetch 없음). 첫 점 도입(2026-07-27) 이전 런은 tank[0].n===1(첫 점 없음)이라
       //    자동 제외 → "향후 측정분부터" 요구를 그대로 만족. 보정은 표시 전용(측정/펌웨어 무관).
       (() => {
-        const MPD = 3; // run_started 가 통째로 비었을 때만 쓰는 최후 근사(하루 측정 횟수)
         const tpAll = runs
           .filter((r) => r.tank && r.tank.length && r.tank[0].n === 0)
           .map((r) => ({
@@ -833,7 +822,7 @@
             .querySelectorAll("#tankPhRangeToggle .range-btn")
             .forEach((b) => b.classList.toggle("active", b === btn));
           const range = btn.dataset.range;
-          cur = range === "all" ? tpAll : recentDays(tpAll, Number(range), (p) => p.day, MPD);
+          cur = range === "all" ? tpAll : recentDays(tpAll, Number(range), (p) => p.day);
           redraw();
         });
         document.getElementById("tankPhCalToggle").addEventListener("click", (e) => {
