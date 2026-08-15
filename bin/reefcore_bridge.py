@@ -13,10 +13,14 @@ dkh.dat 의 최신 측정값을 reefCore MQTT 브로커에 '최근 측정값' �
 
 실행: python reefcore_bridge.py          # 새 측정이면 1회 발행(중복 스킵)
       python reefcore_bridge.py --force  # 중복 무시하고 강제 발행
-dkh.dat 한 줄 형식: HH ref_pH tank_pH ref_kh tank_kh temp
+dkh.dat 한 줄 형식: YYYY-MM-DD HH ref_pH tank_pH ref_kh tank_kh temp (dkh_dat.py 참조,
+날짜 없는 구형식도 그대로 읽힘)
 """
 import os, ssl, sys, json, time, datetime
 import paho.mqtt.client as mqtt
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dkh_dat
 
 BROKER, PORT = "reef.anih.net", 8883
 MAC   = os.environ.get("REEFCORE_MAC", "b0cbd88ec880")
@@ -38,8 +42,10 @@ def main():
         sys.exit("REEFCORE_USER / REEFCORE_PASS 환경변수가 필요합니다.")
     force = "--force" in sys.argv
     line = open(find_dkhfile()).read().strip().splitlines()[-1].strip()
-    parts = line.split()
-    dkh, temp = float(parts[4]), float(parts[5])
+    row = dkh_dat.parse(line)      # 날짜 컬럼(2026-08-16) 유무는 파서가 흡수
+    if row is None:
+        sys.exit(f"dkh.dat 마지막 줄 파싱 실패: {line!r}")
+    dkh, temp = row["tank_kh"], row["temp"]
     if dkh <= 0:                              # 0=에러, 음수=평탄 미도달(V4 규약) → 스킵
         print(f"스킵: 비정상 dKH={dkh} ({line})"); return
     # 중복 발행 방지: 같은 dkh.dat 줄이면 스킵

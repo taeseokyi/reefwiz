@@ -336,8 +336,9 @@
           <li>적용 모드: <b>권고만</b>(자동 적용 꺼짐, 7/6 사용자 지시) — 계산·기록만 하고
             도저 설정은 바꾸지 않음. 수동 설정·목표 저장은 계속 적용됨</li>
           <li>오차(수준): 현재 dKH = <b>최근 유효 측정 3회의 중앙값</b>과 목표의 차이</li>
-          <li>속도(추세): <b>최근 7일 21회 측정의 기울기</b>(Theil-Sen 중앙값 기울기,
-            튀는 값에 강함) — 지금 도징으로 dKH가 하루에 움직이는 속도</li>
+          <li>속도(추세): <b>최근 7일(날짜 기준) 측정의 기울기</b>(Theil-Sen 중앙값 기울기,
+            튀는 값에 강함) — 지금 도징으로 dKH가 하루에 움직이는 속도.
+            회차 수가 아니라 날짜로 창을 자르고, 기울기도 실제 측정 시각 간격으로 계산</li>
           <li>CO₂ 편향 제외: <b>새벽 CO₂ 편향 의심 측정(그래프 주황 점)은 추세·수준
             계산에서 제외</b> — 판정은 ref 곡선 형태(평탄 지연+하강)로 자동.
             플래그 조회 실패 시엔 제외 없이 종전대로 계산</li>
@@ -380,6 +381,34 @@
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 
+  // ── "최근 N일" 공통 규칙 ─────────────────────────────────────────────
+  // N일은 회차 근사(하루 3회 가정)가 아니라 **날짜**로 자른다. 측정이 빠진 날이
+  // 있어도, 반대로 추가 측정을 돌린 날이 있어도 창의 길이는 정확히 N일이다.
+  // 기준일 = 오늘이 아니라 "마지막으로 기록이 추가된 날". 오늘 회차가 아직
+  // 없는 시간대(예: 도저 권고는 13:50경 생성)에 가장 오래된 하루가 잘려나가
+  // N-1일치만 보이던 문제를 막는다.
+  const ymdLocal = (t) =>
+    t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" +
+    String(t.getDate()).padStart(2, "0");
+  // arr = 시간 오름차순 배열, dayOf(x) = 그 항목의 "YYYY-MM-DD..." 문자열.
+  // perDayFallback: 날짜를 하나도 모를 때만 쓰는 회차 근사(없으면 자르지 않음).
+  const recentDays = (arr, days, dayOf, perDayFallback) => {
+    const dayList = arr.map((x) => String(dayOf(x) || "").slice(0, 10));
+    // 앵커는 최댓값 — 순서가 흐트러진 항목이 섞여도 "가장 최근 기록일"이 기준
+    const last = dayList.filter(Boolean).sort().pop();
+    if (!last) return perDayFallback ? arr.slice(-days * perDayFallback) : arr.slice();
+    const cut = new Date(last + "T00:00:00");
+    cut.setDate(cut.getDate() - (days - 1));
+    const cutDay = ymdLocal(cut);
+    // 창내 첫 항목 이후만 보되(날짜 미상 항목도 그 뒤라면 함께 살림), 날짜를 아는
+    // 항목은 창 밖이면 무조건 뺀다 — 순서가 뒤섞여 있어도 창은 정확히 N일.
+    const start = dayList.findIndex((d) => d && d >= cutDay);
+    if (start < 0) return [];
+    return arr.filter((x, i) => i >= start && (!dayList[i] || dayList[i] >= cutDay));
+  };
+  const daysCovered = (arr, dayOf) =>
+    new Set(arr.map((x) => String(dayOf(x) || "").slice(0, 10)).filter(Boolean)).size;
+
   fetch("dkh_latest.json", { cache: "no-store" })
     .then((r) => r.json())
     .then((d) => {
@@ -402,8 +431,9 @@
   fetch("dkh_series.json", { cache: "no-store" })
     .then((r) => r.json())
     .then((fullSeries) => {
-      // dkh.dat 에는 날짜가 없어(시각만 기록) "최근 N일"은 하루 3회 측정 기준의 근사치다.
-      // 날짜(date)는 Actions 쪽에서 동기화 커밋 시각으로 복원해 붙는다(없으면 시각만 표시).
+      // dkh.dat 에는 날짜가 없지만(시각만 기록) Actions 가 동기화 커밋 시각으로 date 를
+      // 복원해 붙여 준다 → 기간 버튼은 recentDays() 로 **날짜** 기준 컷.
+      // MEASURES_PER_DAY 는 date 복원이 통째로 실패했을 때만 쓰는 최후 근사다.
       const MEASURES_PER_DAY = 3;
       let currentSeries = fullSeries;
       const axisLabel = (p) =>
@@ -417,7 +447,11 @@
       const pointColor = (p) => (!p.is_flat ? "#c0392b" : p.co2_suspect ? "#e08a2c" : "#12808f");
 
       const allBtn = document.querySelector('#dkhRangeToggle .range-btn[data-range="all"]');
-      if (allBtn) allBtn.textContent = "전체(" + Math.round(fullSeries.length / MEASURES_PER_DAY) + "일)";
+      if (allBtn) {
+        const covered = daysCovered(fullSeries, (p) => p.date);
+        allBtn.textContent =
+          "전체(" + (covered || Math.round(fullSeries.length / MEASURES_PER_DAY)) + "일)";
+      }
 
       const ctx = document.getElementById("dkhChart");
       const chart = new Chart(ctx, {
@@ -497,7 +531,10 @@
           .querySelectorAll("#dkhRangeToggle .range-btn")
           .forEach((b) => b.classList.toggle("active", b === btn));
         const range = btn.dataset.range;
-        currentSeries = range === "all" ? fullSeries : fullSeries.slice(-Number(range) * MEASURES_PER_DAY);
+        currentSeries =
+          range === "all"
+            ? fullSeries
+            : recentDays(fullSeries, Number(range), (p) => p.date, MEASURES_PER_DAY);
         chart.data.labels = currentSeries.map(axisLabel);
         chart.data.datasets[0].data = currentSeries.map((p) => p.tank_kh);
         chart.data.datasets[0].pointBackgroundColor = currentSeries.map(pointColor);
@@ -697,11 +734,12 @@
       //    (중복 fetch 없음). 첫 점 도입(2026-07-27) 이전 런은 tank[0].n===1(첫 점 없음)이라
       //    자동 제외 → "향후 측정분부터" 요구를 그대로 만족. 보정은 표시 전용(측정/펌웨어 무관).
       (() => {
-        const MPD = 3; // 하루 측정 횟수(3/7일 슬라이스용 근사)
+        const MPD = 3; // run_started 가 통째로 비었을 때만 쓰는 최후 근사(하루 측정 횟수)
         const tpAll = runs
           .filter((r) => r.tank && r.tank.length && r.tank[0].n === 0)
           .map((r) => ({
             label: (r.run_started || "").slice(5, 16),
+            day: (r.run_started || "").slice(0, 10),
             ph: r.tank[0].ph,
             co2_suspect: !!r.co2_suspect,
             ref_net_mph: r.ref_net_mph,
@@ -795,7 +833,7 @@
             .querySelectorAll("#tankPhRangeToggle .range-btn")
             .forEach((b) => b.classList.toggle("active", b === btn));
           const range = btn.dataset.range;
-          cur = range === "all" ? tpAll : tpAll.slice(-Number(range) * MPD);
+          cur = range === "all" ? tpAll : recentDays(tpAll, Number(range), (p) => p.day, MPD);
           redraw();
         });
         document.getElementById("tankPhCalToggle").addEventListener("click", (e) => {
@@ -923,20 +961,11 @@
       const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&#34;");
       // 중단(abort) 행: 이 칸은 도징 양 표시용이라 실패 사유를 넣지 않는다.
       // 조정이 없었다는 사실만 적고, 사유 원문은 행 툴팁(title)으로.
-      // 표시 범위 = 최근 14일(수조 pH·평탄 추종 카드와 동일). 권고는 하루 1행이지만
-      // 수동 설정이 낀 날은 여러 행이라, 행 개수(-N)가 아니라 날짜로 자른다.
+      // 표시 범위 = 최근 14일(다른 카드와 같은 recentDays 규칙 — 날짜 기준, 기준일은
+      // 마지막 기록일). 권고는 하루 1행이지만 수동 설정이 낀 날은 여러 행이라,
+      // 행 개수가 아니라 날짜로 자르는 게 특히 중요하다.
       const DOSER_DAYS = 14;
-      const ymd = (t) =>
-        t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" +
-        String(t.getDate()).padStart(2, "0");
-      const lastDay = hist.length ? String(hist[hist.length - 1].ts).slice(0, 10) : "";
-      const today = ymd(new Date());
-      // 기준일은 오늘. 단 기기 시계가 뒤처져도 최신 행이 잘리지 않게 이력 말일과 비교해 늦은 쪽을 쓴다.
-      const cut = new Date((lastDay > today ? lastDay : today) + "T00:00:00");
-      cut.setDate(cut.getDate() - (DOSER_DAYS - 1));
-      const cutDay = ymd(cut);
-      document.getElementById("doserRows").innerHTML = hist
-        .filter((e) => String(e.ts).slice(0, 10) >= cutDay)
+      document.getElementById("doserRows").innerHTML = recentDays(hist, DOSER_DAYS, (e) => e.ts)
         .reverse()
         .map((e) => {
           const b = badge[e.mode] || ["?", "abort"];

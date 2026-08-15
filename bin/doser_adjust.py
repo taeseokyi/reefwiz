@@ -54,7 +54,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 DAT_FILE = r"C:\dkh\work\dkh.dat"
 HISTORY_FILE = r"C:\dkh\work\doser_history.json"
@@ -71,6 +71,7 @@ CONFIG_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
 SERIES_URL = ("https://api.github.com/repos/taeseokyi/reefwiz/contents/"
               "docs/dkh_series.json?ref=master")
 
+import dkh_dat
 from bt_config import get_port
 
 PORT = get_port('doser')  # BT 포트는 bt_config.json 단일 설정에서 로드(포트 바뀌면 설정만 수정)
@@ -90,10 +91,11 @@ LRT_MAX = 24000           # 사용자 지정 하드 상한 = 현재의 3배(원�
 STEP_MAX_FRAC = 0.30      # 1회 조정 최대 ±30%
 DEADBAND_MS = 200
 
-ROWS = 21                 # 최근 21행 ≈ 7일(하루 3회)
+WINDOW_DAYS = 7           # ★수준·추세 창 = 7일(날짜 기준). 회차 근사 아님(2026-08-16)
+ROWS = 21                 # 폴백 전용 — 날짜 정렬 실패 시에만 쓰는 "21행 ≈ 7일" 근사
 MIN_VALID = 10
 VALID_LO, VALID_HI = 4.0, 12.0
-ROW_DAYS = 8.0 / 24.0     # 행 간격 8시간 가정
+ROW_DAYS = 8.0 / 24.0     # 폴백 전용 — 날짜를 모를 때의 행 간격 8시간 가정
 
 CO2_EXCLUDE_MAX = 9       # 창 안 CO₂ 제외가 이보다 많으면 판정기 오작동 의심 → 중단
 CO2_ALIGN_MIN_OVERLAP = 3 # 접미 정렬로 인정할 최소 겹침 행 수
@@ -150,25 +152,37 @@ def read_dat_lines(path=None):
         return [ln.split() for ln in f.read().splitlines() if ln.strip()]
 
 
-def read_recent_kh(path=None, rows=ROWS, co2_excluded=None):
-    """dkh.dat 마지막 rows행에서 (행위치, tank_kh) 유효값만. 0.0=에러, 음수=미평탄 제외.
+def read_recent_kh(path=None, rows=ROWS, co2_excluded=None, row_days=None,
+                   days=WINDOW_DAYS):
+    """최근 창의 (줄 인덱스, tank_kh) 유효값만. 0.0=에러, 음수=미평탄 제외.
 
-    co2_excluded(전체 파일 기준 줄 인덱스 집합, fetch_co2_excluded 반환)에 든 행은
-    CO₂ 편향 의심으로 추가 제외한다. 행위치 인덱스 i 는 제외돼도 건너뛰기만 하므로
-    Theil-Sen 의 8h 간격 시간축이 그대로 유지된다(기존 유효성 탈락과 같은 방식).
+    ★창 산정(2026-08-16): row_days(줄 인덱스→날짜, build_row_days)가 있으면 **날짜**로
+    자른다 — 마지막 측정일 포함 `days`일. 측정이 빠진 날이 있어도 창이 과거로 늘어나지
+    않고, 추가 측정을 돌린 날이 있어도 창 안쪽이 밀려나지 않는다. 날짜를 못 얻으면
+    (원격 series 조회·정렬 실패) 종전 "마지막 rows행" 회차 근사로 폴백한다.
+
+    co2_excluded(줄 인덱스 집합, fetch_co2_excluded 반환)에 든 행은 CO₂ 편향 의심으로
+    추가 제외한다. 인덱스는 파일 전체 기준이며 제외돼도 건너뛰기만 하므로 시간축은
+    그대로 유지된다(기존 유효성 탈락과 같은 방식).
     반환: (pts, 창 안에서 CO₂ 로 제외된 행 수)
     """
     lines = read_dat_lines(path)
-    base = len(lines) - min(rows, len(lines))
+    if row_days:
+        anchor = max(row_days.values())
+        cut = (anchor - timedelta(days=days - 1))
+        window = [i for i in range(len(lines))
+                  if i in row_days and row_days[i] >= cut]
+    else:
+        window = list(range(max(0, len(lines) - rows), len(lines)))
     pts, n_co2 = [], 0
-    for i, parts in enumerate(lines[-rows:]):
-        try:
-            kh = float(parts[4])
-        except (IndexError, ValueError):
+    for i in window:
+        row = dkh_dat.parse_parts(lines[i])
+        if row is None:
             continue
+        kh = row["tank_kh"]
         if not (VALID_LO < kh < VALID_HI):
             continue
-        if co2_excluded and (base + i) in co2_excluded:
+        if co2_excluded and i in co2_excluded:
             n_co2 += 1
             continue
         pts.append((i, kh))
@@ -180,15 +194,17 @@ def _series_key(hh, tank_kh, temp):
     return (int(hh), round(abs(float(tank_kh)), 3), round(float(temp), 1))
 
 
-def fetch_co2_excluded(lines, series=None):
-    """원격 dkh_series.json 과 접미 정렬로 CO₂ 편향 의심 행의 줄 인덱스 집합을 얻는다.
+def align_series(lines, series=None):
+    """원격 dkh_series.json 을 로컬 dkh.dat 줄에 접미 정렬 → {줄 인덱스: 원격 행}.
 
-    로컬 dkh.dat 에는 날짜가 없어 원격 series(날짜·co2_suspect 보유)와 키 매칭이
-    불가 → (hh, |tank_kh|, temp) 값 시퀀스의 접미 일치로 정렬한다. 실행 시점(측정
+    CO₂ 편향 판정(co2_suspect)은 평탄 곡선에서 나오므로 로컬 dkh.dat 에는 없다 —
+    그 값을 가져오려면 원격 series 와 행을 짝지어야 한다. 로컬에 (신형식이라도) 회차
+    식별자가 없으니 (hh, |tank_kh|, temp) 값 시퀀스의 접미 일치로 정렬한다. 실행 시점(측정
     직후, sync 전)에 원격에는 이번 회차 행이 아직 없으므로 오프셋 k(원격에 없는
-    최신 로컬 행 수)를 0부터 CO2_ALIGN_MAX_LAG 까지 늘려가며 최소 k 를 채택하고,
-    원격에 없는 최신 k행은 미의심 취급. 실패(조회 불가/정렬 불일치) 시 None —
-    호출부는 제외 없이 종전 계산으로 폴백한다.
+    최신 로컬 행 수)를 0부터 CO2_ALIGN_MAX_LAG 까지 늘려가며 최소 k 를 채택한다.
+    원격에 없는 최신 k행은 여기 매핑에 안 들어간다(미의심 취급 + 날짜는 build_row_days
+    가 hh 단조성으로 이어 붙인다). 실패(조회 불가/정렬 불일치) 시 None — 호출부는
+    제외 없이, 창도 회차 근사로 폴백한다.
     series 인자는 테스트용 주입(None 이면 GitHub API 조회).
     """
     if series is None:
@@ -203,14 +219,12 @@ def fetch_co2_excluded(lines, series=None):
 
     local = []  # (줄 인덱스, 비교 키) — series 와 같은 유효 규칙(전부 0=에러 행 제외)
     for i, parts in enumerate(lines):
-        try:
-            ref_kh, tank_kh = float(parts[3]), float(parts[4])
-            key = _series_key(parts[0], tank_kh, parts[5])
-        except (IndexError, ValueError):
+        row = dkh_dat.parse_parts(parts)
+        if row is None:
             continue
-        if ref_kh == 0.0 and tank_kh == 0.0:
+        if row["ref_kh"] == 0.0 and row["tank_kh"] == 0.0:
             continue
-        local.append((i, key))
+        local.append((i, _series_key(row["hh"], row["tank_kh"], row["temp"])))
 
     for k in range(0, CO2_ALIGN_MAX_LAG + 1):
         cand = local[:len(local) - k] if k else local
@@ -218,20 +232,99 @@ def fetch_co2_excluded(lines, series=None):
         if t < CO2_ALIGN_MIN_OVERLAP:
             break
         if [key for _, key in cand[-t:]] == s_keys[-t:]:
-            return {idx for (idx, _), row in zip(cand[-t:], series[-t:])
-                    if row.get("co2_suspect")}
+            return {idx: row for (idx, _), row in zip(cand[-t:], series[-t:])}
     log("[CO₂플래그] 원격 series 와 정렬 실패 — 제외 없이 계산")
     return None
 
 
-def theil_sen_per_day(pts):
-    """쌍별 기울기 중앙값(dKH/일). 행 간격은 8h 균일 가정."""
+def fetch_co2_excluded(lines, series=None, aligned=None):
+    """CO₂ 편향 의심 행의 줄 인덱스 집합. 정렬 실패 시 None(제외 없이 폴백)."""
+    if aligned is None:
+        aligned = align_series(lines, series)
+    if aligned is None:
+        return None
+    return {i for i, row in aligned.items() if row.get("co2_suspect")}
+
+
+def build_row_days(lines, aligned=None):
+    """{줄 인덱스: 측정 날짜(date)} — 창을 날짜로 자르기 위한 시간축(2026-08-16).
+
+    ①우선 dkh.dat 자체의 날짜 컬럼을 읽는다(2026-08-16 도입, dkh_dat.py). 이게 사실이다.
+    ②날짜 없는 구형식 행만 원격 series 정렬(aligned)로 보완하고, 원격에도 없는 최신
+      k행은 마지막으로 아는 날짜에서 hh 단조성으로 이어 붙인다 — 하루 안에서 시각은
+      증가하므로 hh 가 늘지 않으면 날짜가 넘어간 것이다.
+    아무 경로로도 날짜를 못 얻으면 None → 호출부는 회차 근사로 폴백.
+    """
+    days = {}
+    for i, parts in enumerate(lines):
+        row = dkh_dat.parse_parts(parts)
+        if row and row["date"] and not row["is_error"]:
+            try:
+                days[i] = date.fromisoformat(row["date"])
+            except ValueError:
+                pass
+    for i, row in (aligned or {}).items():
+        if i in days:
+            continue
+        d = row.get("date")
+        if d:
+            try:
+                days[i] = date.fromisoformat(d)
+            except ValueError:
+                pass
+    if not days:
+        return None
+    # 정렬 뒤쪽(원격에 없는) 최신 행 이어 붙이기 — 에러 행(전부 0)은 측정이 아니므로 건너뛴다
+    last_idx = max(days)
+    cur_day, prev_hh = days[last_idx], _row_hh(lines[last_idx])
+    for i in range(last_idx + 1, len(lines)):
+        hh = _row_hh(lines[i])
+        if hh is None:
+            continue
+        if prev_hh is not None and hh <= prev_hh:
+            cur_day += timedelta(days=1)
+        days[i], prev_hh = cur_day, hh
+    return days
+
+
+def _row_hh(parts):
+    """dkh.dat 한 행의 측정 시각(HH). 에러 행(전부 0)·형식 오류는 None."""
+    row = dkh_dat.parse_parts(parts)
+    if row is None or (row["ref_kh"] == 0.0 and row["tank_kh"] == 0.0):
+        return None
+    return row["hh"]
+
+
+def theil_sen_per_day(pts, times=None):
+    """쌍별 기울기 중앙값(dKH/일).
+
+    times({줄 인덱스: 일 단위 시각}, build_times)가 있으면 **실제 측정 시각 간격**을
+    쓴다(2026-08-16). 없으면 종전처럼 행 간격 8h 균일 가정으로 폴백 — 05/13/21시는
+    실제로 8h 간격이라 결측·추가 측정이 없는 창에서는 두 결과가 같다.
+    """
+    def dt(i, j):
+        if times and i in times and j in times:
+            return times[j] - times[i]
+        return (j - i) * ROW_DAYS
     slopes = [
-        (kj - ki) / ((j - i) * ROW_DAYS)
+        (kj - ki) / d
         for a, (i, ki) in enumerate(pts)
         for (j, kj) in (pts[b] for b in range(a + 1, len(pts)))
+        if (d := dt(i, j))
     ]
     return statistics.median(slopes)
+
+
+def build_times(lines, row_days):
+    """{줄 인덱스: 일 단위 시각} — 날짜(build_row_days)+측정 시각(HH)."""
+    if not row_days:
+        return None
+    times = {}
+    for i, d in row_days.items():
+        hh = _row_hh(lines[i])
+        if hh is not None:
+            times[i] = d.toordinal() + hh / 24.0
+    return times or None
 
 
 def compute(level, slope, cur_lrt, target=TARGET_DKH):
@@ -491,15 +584,21 @@ def main():
         return
 
     if "--dry-run" in sys.argv:
-        co2 = fetch_co2_excluded(read_dat_lines())  # 조회 실패=None → 제외 없이 폴백
-        pts, n_co2 = read_recent_kh(co2_excluded=co2)
+        lines = read_dat_lines()
+        aligned = align_series(lines)       # 조회/정렬 실패=None → 제외 없이·회차 근사로 폴백
+        co2 = fetch_co2_excluded(lines, aligned=aligned)
+        row_days = build_row_days(lines, aligned)
+        pts, n_co2 = read_recent_kh(co2_excluded=co2, row_days=row_days)
         co2_txt = ("CO₂ 플래그 조회 실패 — 제외 없음" if co2 is None
                    else f"CO₂ 의심 {n_co2}점 제외")
+        win_txt = (f"창 {WINDOW_DAYS}일(날짜 기준)" if row_days
+                   else f"창 최근 {ROWS}행(날짜 미상 — 회차 근사 폴백)")
         if len(pts) < MIN_VALID:
-            print(f"유효 측정 부족: {len(pts)}/{MIN_VALID} | {co2_txt}")
+            print(f"유효 측정 부족: {len(pts)}/{MIN_VALID} | {win_txt} | {co2_txt}")
             return
         level = statistics.median(kh for _, kh in pts[-3:])
-        slope = theil_sen_per_day(pts)
+        slope = theil_sen_per_day(pts, build_times(lines, row_days))
+        print(win_txt)
         cur_lrt = int(sys.argv[sys.argv.index("--lrt") + 1]) if "--lrt" in sys.argv else 8000
         target = fetch_target()  # 무접속=도저 미접속. 네트워크 실패 시 기본값이라 오프라인 OK
         r = compute(level, slope, cur_lrt, target)
@@ -523,10 +622,16 @@ def main():
     if "--slot-adjust" not in sys.argv:
         return
 
-    co2 = fetch_co2_excluded(read_dat_lines())
-    pts, n_co2 = read_recent_kh(co2_excluded=co2)
+    lines = read_dat_lines()
+    aligned = align_series(lines)
+    co2 = fetch_co2_excluded(lines, aligned=aligned)
+    row_days = build_row_days(lines, aligned)
+    pts, n_co2 = read_recent_kh(co2_excluded=co2, row_days=row_days)
     co2_note = ("CO₂ 플래그 조회 실패 — 제외 없이 계산" if co2 is None
                 else f"CO₂ 의심 {n_co2}점 제외" if n_co2 else "")
+    if not row_days:
+        # 창을 날짜로 못 자른 회차 — 이력에 남겨야 나중에 수치를 재해석할 수 있다
+        co2_note = (co2_note + " | " if co2_note else "") + f"창 회차 근사({ROWS}행) 폴백"
     if n_co2 > CO2_EXCLUDE_MAX:
         record_abort(f"CO₂ 제외 과다({n_co2}점>{CO2_EXCLUDE_MAX}) — 판정기 점검 필요")
         return
@@ -536,7 +641,7 @@ def main():
         return
 
     level = statistics.median(kh for _, kh in pts[-3:])
-    slope = theil_sen_per_day(pts)
+    slope = theil_sen_per_day(pts, build_times(lines, row_days))
     target = fetch_target()
 
     # 실전 실행: 장치 조회 → 계산 → (권고 or 적용) → 기록

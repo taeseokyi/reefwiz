@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """평탄 추종 궤적의 무기한 보관소 (append-only JSONL).
 
-docs/dkh_plateau_history.json 은 대시보드 조회 범위(sync_dkh_dat.MAX_RUNS=42회=14일)에
-맞춰 잘라내므로 14일 지난 회차의 궤적은 파일에서 사라진다. 지금까지는 sync 가 회차마다
+docs/dkh_plateau_history.json 은 대시보드 조회 범위(sync_dkh_dat.KEEP_DAYS=14일, 회차
+수가 아니라 날짜 기준)에 맞춰 잘라내므로 14일 지난 회차의 궤적은 파일에서 사라진다. 지금까지는 sync 가 회차마다
 커밋을 남긴 덕에 git 이력에서 되살릴 수 있었지만(2026-08-04 기준 91회/34일 복원),
 이력 재작성 전력이 있는 저장소라 git 스냅샷에만 기대는 건 위험하고 복원 비용도 크다.
 

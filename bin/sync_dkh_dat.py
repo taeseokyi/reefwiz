@@ -12,10 +12,14 @@ Windows에만 있어 Actions가 못 보므로, 여기서 파싱까지 끝내 doc
 바로 커밋한다(이 산출물은 추가 렌더링이 필요 없어 Actions를 거칠 이유가 없음).
 원본 로그는 1MB 넘으면 비워져 과거 실행이 사라지므로, 이 이력 파일이 유일한 누적 저장소다
 — 마지막 실행만 파싱해 run_started 기준으로 upsert(진행 중 스냅샷은 완료본으로 교체)하고
-최근 MAX_RUNS(42회=14일×3회)만 남긴다. 대시보드의 "최근 14일 평탄 추종 조회"가 이걸 읽는다.
+최근 KEEP_DAYS(14일)치만 남긴다. 대시보드의 "최근 14일 평탄 추종 조회"가 이걸 읽는다.
+★보관 기준은 회차가 아니라 날짜다(2026-08-16): 종전 42회(=14일×3회) 컷은 하루 3회를
+가정한 근사라, 측정이 빠진 날이 있으면 창이 14일보다 길어지고 추가 측정을 돌린 날이
+있으면 14일 안쪽 데이터가 밀려나 잘렸다. "최근 14일"은 무조건 14일이어야 한다.
 잘려나가는 궤적은 사후 분석 표본이라 별도로 data/dkh_plateau_archive.jsonl 에 무기한
-쌓는다(2026-08-04, plateau_archive.py 참조 — 대시보드가 읽는 파일은 42회 그대로다).
+쌓는다(2026-08-04, plateau_archive.py 참조 — 아카이브는 이 컷과 무관하게 전부 보관).
 """
+import datetime
 import fcntl
 import json
 import logging
@@ -36,7 +40,7 @@ DOSER_DST = os.path.join(REPO_DIR, "docs", "doser_history.json")
 # 분석용 무기한 아카이브. 상수로 빼 둬야 테스트가 임시 경로로 갈아끼울 수 있다 —
 # 안 그러면 sync_plateau 를 부르는 테스트가 실제 아카이브에 합성 회차를 남긴다.
 PLATEAU_ARCHIVE = plateau_archive.ARCHIVE_PATH
-MAX_RUNS = 42  # 14일 × 하루 3회 — 대시보드 조회 범위
+KEEP_DAYS = 14  # 대시보드 조회 범위 — 회차가 아니라 날짜로 자른다(기준일=마지막 런의 날짜)
 LOCK_FILE = "/tmp/dkh_sync.lock"
 LOG_FILE = os.path.expanduser("~/dkh_sync.log")
 
@@ -80,6 +84,30 @@ def sync_doser():
     if not os.path.exists(DOSER_SRC):
         return False
     return copy_if_changed(DOSER_SRC, DOSER_DST)
+
+
+def trim_to_days(history, days=KEEP_DAYS):
+    """대시보드용 이력을 최근 `days`일치로 자른다(회차 수가 아니라 날짜 기준).
+
+    기준일은 오늘이 아니라 **마지막 런의 날짜**다. 측정이 며칠 끊겨도 마지막
+    14일치 궤적은 그대로 남고(빈 날에 밀려 사라지지 않음), 하루에 추가 측정을
+    돌려도 14일 안쪽 회차가 밀려나지 않는다.
+    run_started 가 없는 항목(파싱 실패 잔재)은 시간 위치를 알 수 없으므로 "창에
+    들어온 첫 런 이후"라는 위치 기준으로만 살린다 — 그 앞의 것은 오래된 것이다.
+    날짜를 아는 런은 순서가 뒤섞여 있어도 창 밖이면 뺀다(창 길이 = 정확히 days일).
+    """
+    day_of = [(r.get("run_started") or "")[:10] for r in history]
+    dated = [d for d in day_of if d]
+    if not dated:
+        return history
+    try:  # 앵커는 max — 뒤늦게 들어온 항목으로 순서가 흐트러져도 최신일이 기준
+        cut = (datetime.date.fromisoformat(max(dated))
+               - datetime.timedelta(days=days - 1)).isoformat()
+    except ValueError:
+        return history
+    start = next((i for i, d in enumerate(day_of) if d and d >= cut), 0)
+    return [r for i, r in enumerate(history)
+            if i >= start and (not day_of[i] or day_of[i] >= cut)]
 
 
 def sync_plateau():
@@ -131,7 +159,7 @@ def sync_plateau():
         return False, archived
     else:
         history[idx] = result
-    history = history[-MAX_RUNS:]
+    history = trim_to_days(history)
 
     os.makedirs(os.path.dirname(PLATEAU_DST), exist_ok=True)
     with open(PLATEAU_DST, "w") as f:

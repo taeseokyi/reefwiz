@@ -405,9 +405,9 @@ def _drive_main(setref=None, meas_max=None, drops=None, dat_error=False):
     orig_log = mk.log_kh
     orig_serial, orig_argv, orig_max = mk.serial.Serial, sys.argv, mk.MEAS_MAX
     orig_late = mk.last_dat_is_error
-    def fake_log(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp):
+    def fake_log(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp, day=None):
         logged.update(dict(hour=hour, ref_ph=ref_ph, tank_ph=tank_ph,
-                           ref_kh=ref_kh, tank_kh=tank_kh, temp=temp))
+                           ref_kh=ref_kh, tank_kh=tank_kh, temp=temp, day=day))
     def fake_serial(p, b, timeout=1, **kw):
         # write_timeout 등 추가 kwargs 는 socket 가상포트에 그대로 전달(2026-07-03 write_timeout=5 대응)
         return serial.serial_for_url(p, baudrate=b, timeout=timeout, **kw)
@@ -724,6 +724,50 @@ def scenario_latch_consistency():
         check(f"[{label}] dkh.dat 0.0 재기록", logged.get('tank_kh') == 0.0, f"got {logged.get('tank_kh')}")
 
 
+def scenario_dat_date_column():
+    print("\n[27] dkh.dat 날짜 컬럼 — 실제 파일 기록·에러 래치 (2026-08-16)")
+    # 다른 시나리오는 log_kh 를 가로채므로, 여기서는 진짜 파일에 쓰고 되읽는다.
+    import os, tempfile, datetime as _dt
+    import dkh_dat
+    orig = mk.DAT_FILE
+    with tempfile.TemporaryDirectory() as td:
+        mk.DAT_FILE = os.path.join(td, "dkh.dat")
+        try:
+            today = _dt.date.today()
+            mk.log_kh(13, 7.738, 7.677, 8.830, 7.684, 29.0, day=today)
+            line = open(mk.DAT_FILE).read().strip()
+            row = dkh_dat.parse(line)
+            check("기록 줄에 측정 시작일", row and row["date"] == today.isoformat(), line)
+            # 자정 넘김: 21시 시작 회차를 새벽 1시에 기록해도 시작일(어제)로 귀속
+            with open(mk.DAT_FILE, "w") as f:
+                f.write("")
+            mk.log_kh(21, 7.7, 7.6, 8.83, 7.5, 29.0, day=today - _dt.timedelta(days=1))
+            check("자정 넘긴 회차는 시작일로 기록",
+                  dkh_dat.parse(open(mk.DAT_FILE).read().strip())["date"]
+                  == (today - _dt.timedelta(days=1)).isoformat())
+            with open(mk.DAT_FILE, "w") as f:
+                f.write("")
+            mk.log_kh(13, 7.738, 7.677, 8.830, 7.684, 29.0, day=today)
+            row = dkh_dat.parse(open(mk.DAT_FILE).read().strip())
+            check("측정값 보존", row and (row["hh"], row["tank_kh"], row["temp"]) == (13, 7.684, 29.0),
+                  line)
+            check("에러 래치 미발동(정상 줄)", mk.last_dat_is_error() is False)
+
+            mk.log_kh(15, 0.0, 0.0, 0.0, 0.0, 0.0)   # 에러 표식
+            check("에러 래치 발동(날짜 붙은 에러 줄)", mk.last_dat_is_error() is True,
+                  open(mk.DAT_FILE).read().splitlines()[-1])
+
+            # 구형식(날짜 없는) 에러 줄도 그대로 래치돼야 한다 — 이관 중 혼재 대비
+            with open(mk.DAT_FILE, "a") as f:
+                f.write("15 0.000 0.000 0.000 0.000 0.0\n")
+            check("에러 래치 발동(구형식 에러 줄)", mk.last_dat_is_error() is True)
+            with open(mk.DAT_FILE, "a") as f:
+                f.write("05 7.735 7.678 8.830 7.746 28.9\n")
+            check("구형식 정상 줄이면 래치 해제", mk.last_dat_is_error() is False)
+        finally:
+            mk.DAT_FILE = orig
+
+
 def scenario_preaerate_toggle():
     print("\n[23] 고정 사전폭기 + read 직전 폭기 토글 (2026-07-23)")
     # 사전폭기 값을 잠깐 실전값으로 되살려 keepalive_sleep 호출 인자를 기록(실제 대기는 0)해 검증.
@@ -927,6 +971,7 @@ def main():
     scenario_calkh_error_publish()
     scenario_calref_error_publish()
     scenario_latch_consistency()
+    scenario_dat_date_column()
     scenario_cleanup_precond()
     scenario_cleanup_state()
     scenario_preaerate_toggle()

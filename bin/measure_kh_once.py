@@ -64,10 +64,11 @@ V4 (2026-06-17): "측정 중 폭기 + 진짜 평형(평탄)까지" 측정.
     (오프셋은 ref·tank 공통모드라 ΔpH/dKH 엔 무영향).
   ※ 널테스트 한정: ref 채우기 전 헹굼 생략. 정상운영(KH 다름) 복귀 시 복원 필수.
 
-dkh.dat 형식 (한 줄에 하나):
-  HH ref_pH tank_pH ref_kh tank_kh temp
-  14 7.823 7.412 8.523 7.901 25.3
-  15 0.000 0.000 0.000 0.000 0.0   ← 오류/타임아웃/KCl 소크 실패 시 (에러 표식)
+dkh.dat 형식 (한 줄에 하나, 파싱·기록은 dkh_dat.py 단일 규약):
+  YYYY-MM-DD HH ref_pH tank_pH ref_kh tank_kh temp   ★날짜 컬럼 2026-08-16 도입
+  2026-08-16 14 7.823 7.412 8.523 7.901 25.3
+  2026-08-16 15 0.000 0.000 0.000 0.000 0.0   ← 오류/타임아웃/KCl 소크 실패 시 (에러 표식)
+  - 구형식(날짜 없는 6필드)도 계속 읽힌다. 과거 행은 backfill_dkh_dates.py 로 채웠다.
   - ★에러 래치: 마지막 줄이 에러 표식(값 전부 0)이면, 다음 실행은 *측정하지 않고*
     에러 표식만 재기록한다(수동으로 마지막 에러 줄을 지우기 전까지). 프로브 보호를
     위해 오류 상태에서 무인 반복측정을 멈춤.
@@ -94,8 +95,9 @@ import re
 import sys
 import os
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import dkh_dat
 from bt_config import get_port
 
 PORT     = get_port('measure')   # BT 포트는 bt_config.json 단일 설정에서 로드(포트 바뀌면 설정만 수정). argv[1]로 오버라이드 가능
@@ -192,11 +194,24 @@ def setup_logging():
 # 파일 기록
 # ─────────────────────────────────────────────
 
-def log_kh(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp):
-    """시각과 측정값 전체를 dkh.dat 에 한 줄 추가 후 즉시 닫기.
-    형식: HH ref_pH tank_pH ref_kh tank_kh temp
+def log_kh(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp, day=None):
+    """측정 날짜·시각과 값 전체를 dkh.dat 에 한 줄 추가 후 즉시 닫기.
+    형식: YYYY-MM-DD HH ref_pH tank_pH ref_kh tank_kh temp (dkh_dat.py 단일 규약)
+
+    ★날짜 컬럼(2026-08-16): 종전엔 시각(HH)만 적어서 소비자들이 "최근 N일"을 하루
+    3회 가정의 회차 근사나 git blame·원격 정렬 같은 우회로로 복원해야 했다.
+
+    day = 측정 **시작** 날짜(date). main 이 시작 시각에서 그대로 넘겨 준다 — 측정이
+    자정을 넘겨 끝나도(21시 회차가 새벽에 종료) 회차는 시작일에 귀속돼야 하기 때문.
+    직접 호출 등으로 day 가 없으면 기록 시점에서 역산한다(시작 시각이 지금보다 12시간
+    이상 늦게 찍혀 있으면 = 자정을 넘긴 것).
     """
-    line = f"{hour:02d} {ref_ph:.3f} {tank_ph:.3f} {ref_kh:.3f} {tank_kh:.3f} {temp:.1f}"
+    if day is None:
+        now = datetime.now()
+        day = now.date()
+        if hour - now.hour >= 12:
+            day -= timedelta(days=1)
+    line = dkh_dat.format_line(day.isoformat(), hour, ref_ph, tank_ph, ref_kh, tank_kh, temp)
     with open(DAT_FILE, 'a') as f:
         f.write(line + '\n')
     print(f"[LOG] {DAT_FILE} ← {line}")
@@ -204,7 +219,8 @@ def log_kh(hour, ref_ph, tank_ph, ref_kh, tank_kh, temp):
 
 def last_dat_is_error():
     """dkh.dat 마지막(비어있지 않은) 줄이 에러 표식(5개 값 전부 0)인지.
-    파일 없음/빈 파일/파싱 실패면 False(정상 측정 진행)."""
+    파일 없음/빈 파일/파싱 실패면 False(정상 측정 진행).
+    신·구 형식(날짜 유무) 모두 dkh_dat 파서가 흡수한다."""
     try:
         with open(DAT_FILE) as f:
             lines = [ln.strip() for ln in f if ln.strip()]
@@ -212,14 +228,8 @@ def last_dat_is_error():
         return False
     if not lines:
         return False
-    parts = lines[-1].split()
-    if len(parts) < 6:
-        return False
-    try:
-        vals = [float(x) for x in parts[1:6]]   # ref_pH tank_pH ref_kh tank_kh temp
-    except ValueError:
-        return False
-    return all(v == 0.0 for v in vals)
+    row = dkh_dat.parse(lines[-1])
+    return bool(row and row["is_error"])
 
 
 # ─────────────────────────────────────────────
@@ -1068,7 +1078,7 @@ def main():
     if last_dat_is_error():
         print("[중단] dkh.dat 마지막 줄이 에러 표식(전부 0) — 측정 생략, 에러 표식 재기록.")
         print("       수동으로 마지막 에러 줄을 제거하기 전까지 매 실행 반복됩니다.")
-        log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0)
+        log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0, day=now.date())
         return
 
     result = None
@@ -1095,10 +1105,11 @@ def main():
     # ★결과 저장 — calkh·calref 완전 일치:
     #   완전한 결과면 측정/입력값 기록(음수=미평탄도 기록), 아니면 0.0 에러 표식 기록.
     #   (calref: result=(ref_ph, tank_ph, ref_kh=새 refDKH, tank_kh=입력값(미평탄이면 음수), temp))
+    # 날짜는 측정 *시작* 시각(now) 기준 — 자정을 넘겨 끝나도 회차는 시작일에 귀속
     if result and all(v is not None for v in result):
-        log_kh(hour, *result)
+        log_kh(hour, *result, day=now.date())
     else:
-        log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0)
+        log_kh(hour, 0.0, 0.0, 0.0, 0.0, 0.0, day=now.date())
 
 
 if __name__ == '__main__':

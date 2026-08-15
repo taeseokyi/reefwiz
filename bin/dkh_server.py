@@ -10,6 +10,9 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dkh_dat
+
 DAT_FILE = os.path.join(os.path.dirname(__file__), "dkh.dat")
 HOST = "0.0.0.0"
 PORT = 9999  # 2026-07-06 사용자 요청으로 9090→9999 변경
@@ -47,10 +50,11 @@ def read_last_dkh():
                 last_line = stripped
     if last_line is None:
         raise ValueError("dkh.dat is empty")
-    parts = last_line.split()
-    if len(parts) < 5:
+    # 날짜 유무(2026-08-16 도입) 판별은 dkh_dat 파서 한 곳에서만 한다
+    row = dkh_dat.parse(last_line)
+    if row is None:
         raise ValueError(f"malformed line: {last_line!r}")
-    return float(parts[4])  # tank_kh
+    return row["tank_kh"]  # 0.0=에러, 음수=평탄 미도달 — 종전대로 그대로 통과시킨다
 
 
 class Handler(BaseHTTPRequestHandler):

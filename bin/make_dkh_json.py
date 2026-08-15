@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """dkh.dat 을 읽어 대시보드용 JSON 2종을 낸다(그래프 렌더링 없음, 의존성 없음).
 
-dkh.dat 형식(공백 구분, 한 줄에 하나): HH ref_pH tank_pH ref_kh tank_kh temp
+dkh.dat 형식(공백 구분, 한 줄에 하나 — 파싱은 dkh_dat.py 단일 규약):
+  YYYY-MM-DD HH ref_pH tank_pH ref_kh tank_kh temp  (2026-08-16~), 구형식은 날짜 없음
   - 5개 값 전부 0.000  → 에러 표식(측정 실패/타임아웃/KCl 소크 실패), 스킵
   - tank_kh 가 음수    → 평탄(평형) 미도달 표식. 크기는 유지되므로 abs() 로 값만 취하고 따로 표시
-  - 파일에 날짜가 없다(시각 HH만 기록) → --recent 는 "최근 N건"(회수) 근사다.
+  - 날짜가 있는 행은 그 값을 그대로 쓴다. --recent(회수 근사)는 날짜가 없는 구형식
+    파일에서만 의미가 있다.
+  - --recent-days: 복원된 날짜로 "최근 N일"을 정확히 자른다(권장). 측정이 빠진 날이
+    있어도 창이 늘어나지 않고, 추가 측정을 돌린 날이 있어도 안쪽 데이터가 안 밀린다.
+    기준일은 오늘이 아니라 마지막 행의 날짜. 날짜 복원이 통째로 실패했을 때만
+    --recent(회수 근사)로 폴백한다.
   - --dates-from-git: 각 행이 append 된 커밋 시각(git blame)으로 날짜를 복원해
     "date"(YYYY-MM-DD) 필드를 붙인다. git 이력이 없으면 조용히 날짜 없이 동작.
   - --plateau: dkh_plateau_history.json 의 런과 (date, hh) 로 매칭해 CO₂ 편향 의심
@@ -18,32 +24,34 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dkh_dat
+
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 
 def load(path):
+    """dkh.dat → 시리즈 행 목록. 파일에 날짜가 있으면(신형식) 그대로 date 로 싣는다."""
     rows = []
-    with open(path) as f:
-        for lineno, line in enumerate(f, 1):
-            parts = line.split()
-            if len(parts) < 5:
-                continue
-            hh, _ref_ph, _tank_ph, ref_kh, tank_kh, *rest = parts
-            temp = float(rest[0]) if rest else float("nan")
-            ref_kh_v = float(ref_kh)
-            tank_kh_v = float(tank_kh)
-            if ref_kh_v == 0.0 and tank_kh_v == 0.0:
-                continue  # 에러 표식(전부 0) — 스킵
-            is_flat = tank_kh_v >= 0
-            rows.append({
-                "line": lineno, "hh": int(hh), "ref_kh": ref_kh_v,
-                "tank_kh": abs(tank_kh_v), "temp": temp, "is_flat": is_flat,
-            })
+    for r in dkh_dat.load(path):
+        if r["ref_kh"] == 0.0 and r["tank_kh"] == 0.0:
+            continue  # 에러 표식(전부 0) — 스킵
+        row = {
+            "line": r["line"], "hh": r["hh"], "ref_kh": r["ref_kh"],
+            "tank_kh": abs(r["tank_kh"]), "temp": r["temp"], "is_flat": r["is_flat"],
+        }
+        if r["date"]:
+            row["date"] = r["date"]
+        rows.append(row)
     return rows
 
 
 def git_line_dates(dat_path):
     """파일 각 줄의 날짜(YYYY-MM-DD 리스트, 1-base 줄번호 순)를 git 커밋 시각으로 복원.
+
+    ★2026-08-16 이후로는 사실상 쓰이지 않는다 — dkh.dat 이 날짜를 직접 갖고(dkh_dat.py),
+    과거 행도 backfill_dkh_dates.py 로 채웠기 때문에 호출부가 "날짜 없는 행이 하나라도
+    있을 때"만 부른다. 구형식 파일(백업본·다른 사본)을 읽을 때를 위한 폴백으로 남긴다.
 
     행은 측정 시작(HH시) 약 1.5시간 뒤 크론 커밋으로 append 되므로 커밋 날짜≈측정 날짜.
     - 커밋 시각의 시(hour)가 행의 HH보다 이르면 자정을 넘긴 지연 커밋 → 하루 빼기.
@@ -136,6 +144,24 @@ def write_latest_json(rows, path):
     print(f"저장: {path}")
 
 
+def slice_recent_days(rows, days):
+    """복원된 date 기준으로 최근 `days`일치만 남긴다. 날짜가 하나도 없으면 None."""
+    day_of = [r.get("date") or "" for r in rows]
+    dated = [d for d in day_of if d]
+    if not dated:
+        return None
+    try:  # 앵커는 max — 날짜 복원이 흔들려 역전된 행이 섞여도 최신일이 기준
+        cut = (datetime.date.fromisoformat(max(dated))
+               - datetime.timedelta(days=days - 1)).isoformat()
+    except ValueError:
+        return None
+    # 날짜 미상 행은 위치 기준으로 처리(창 첫 행 이후면 살림). 날짜를 아는 행은
+    # 순서가 뒤섞여 있어도 창 밖이면 뺀다 — 창 길이 = 정확히 days일.
+    start = next((i for i, d in enumerate(day_of) if d and d >= cut), 0)
+    return [r for i, r in enumerate(rows)
+            if i >= start and (not day_of[i] or day_of[i] >= cut)]
+
+
 def write_series_json(rows, path):
     """대시보드 인터랙티브 차트용 — 최근 구간을 배열로 내보낸다."""
     with open(path, "w") as f:
@@ -150,7 +176,9 @@ if __name__ == "__main__":
     ap.add_argument("--json", default=None, help="최신 측정값 JSON 출력 경로(옵션)")
     ap.add_argument("--series-json", default=None, help="최근 구간 배열 JSON 출력 경로(옵션)")
     ap.add_argument("--recent", type=int, default=None,
-                     help="series-json에 담을 최근 N건(옵션) — json(최신값)은 항상 전체 마지막 행 기준")
+                     help="series-json에 담을 최근 N건(회수 근사) — --recent-days 실패 시 폴백")
+    ap.add_argument("--recent-days", type=int, default=None,
+                     help="series-json에 담을 최근 N일(날짜 기준, 권장 — --dates-from-git 필요)")
     ap.add_argument("--dates-from-git", action="store_true",
                      help="git blame 커밋 시각으로 각 행의 날짜를 복원해 date 필드 추가")
     ap.add_argument("--plateau", default=None,
@@ -161,11 +189,13 @@ if __name__ == "__main__":
     if not rows:
         raise SystemExit("표시할 데이터가 없습니다(전부 에러 표식이거나 파일이 비어있음).")
 
-    if args.dates_from_git:
+    # 파일에 날짜가 있으면(2026-08-16~ 신형식) 그게 사실이다. git blame 복원은 날짜가
+    # 없는 구형식 행에만 적용한다 — 덮어쓰면 근사가 사실을 밀어내게 된다.
+    if args.dates_from_git and any("date" not in r for r in rows):
         dates = git_line_dates(args.dat_file)
         if dates:
             for r in rows:
-                if r["line"] <= len(dates):
+                if "date" not in r and r["line"] <= len(dates):
                     r["date"] = dates[r["line"] - 1]
 
     if args.plateau:
@@ -179,5 +209,12 @@ if __name__ == "__main__":
     if args.json:
         write_latest_json(rows, args.json)
     if args.series_json:
-        series_rows = rows[-args.recent:] if args.recent else rows
+        series_rows = None
+        if args.recent_days:
+            series_rows = slice_recent_days(rows, args.recent_days)
+            if series_rows is None:
+                print(f"경고: 날짜 복원 실패 — 최근 {args.recent}건(회수 근사)으로 폴백",
+                      file=sys.stderr)
+        if series_rows is None:
+            series_rows = rows[-args.recent:] if args.recent else rows
         write_series_json(series_rows, args.series_json)
