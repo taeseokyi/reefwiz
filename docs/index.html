@@ -743,6 +743,13 @@
           return;
         }
 
+        // "전체" 버튼에는 실제로 누적된 일수를 붙인다(경도 그래프와 동일 규칙).
+        // 보관 상한은 14일이지만 이력이 덜 찼으면 그 일수가 그대로 보이는 게 정직하다.
+        const tpAllBtn = document.querySelector('#tankPhRangeToggle .range-btn[data-range="all"]');
+        if (tpAllBtn) {
+          tpAllBtn.textContent = "전체(" + daysCovered(tpAll, (p) => p.day) + "일)";
+        }
+
         // 초기 표시 범위는 토글에서 active 로 찍혀 있는 버튼(마크업 기본 = 7일)과 반드시
         // 일치해야 한다. 예전엔 tpAll 로 시작해서 버튼은 "7일"인데 그래프는 14일 전체가
         // 그려졌다. 기본 버튼을 바꿔도 자동으로 따라가도록 마크업에서 읽어 쓴다.
