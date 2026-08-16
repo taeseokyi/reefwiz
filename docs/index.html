@@ -429,7 +429,15 @@
     .then((fullSeries) => {
       // 각 점의 date 는 dkh.dat 의 날짜 컬럼(2026-08-16~) 그대로 → 기간 버튼은
       // recentDays() 로 **날짜** 기준 컷.
-      let currentSeries = fullSeries;
+      // 초기 표시 범위는 토글에서 active 로 찍혀 있는 버튼(마크업 기본 = 7일)에서 읽는다
+      // — 수조 pH 카드와 같은 규칙. 예전엔 fullSeries 로 한 번 그린 뒤 7일 버튼을
+      // click() 해서 다시 그렸는데, 그 사이 전체(14일) 그래프가 순간 보이는 일이 있었다.
+      const dkhInitRange =
+        document.querySelector("#dkhRangeToggle .range-btn.active").dataset.range;
+      let currentSeries =
+        dkhInitRange === "all"
+          ? fullSeries
+          : recentDays(fullSeries, Number(dkhInitRange), (p) => p.date);
       const axisLabel = (p) =>
         Number(p.date.slice(5, 7)) + "/" + Number(p.date.slice(8, 10)) + " " + p.hh + "시";
       const tooltipTitle = (p) =>
@@ -533,9 +541,7 @@
         chart.data.datasets[2].data = currentSeries.map((p) => p.temp);
         chart.update();
       });
-
-      // 기본값 7일로 초기 렌더
-      document.querySelector('#dkhRangeToggle .range-btn[data-range="7"]').click();
+      // 초기 렌더는 위에서 currentSeries 를 이미 잘라 두었으므로 추가 click() 불필요.
     })
     .catch(() => {});
 
