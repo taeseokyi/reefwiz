@@ -26,7 +26,7 @@
 #define FW_CODE     "RWA1"
 #define FW_NAME     "ReefWiz Air A-1"
 #define FW_VERSION  "1.0.0"
-#define FW_COMMIT   "41CC8C"
+#define FW_COMMIT   "55DAFC"
 #define FW_VERSTR   FW_NAME " v" FW_VERSION " #" FW_COMMIT
 
 #include <SoftwareSerial.h>

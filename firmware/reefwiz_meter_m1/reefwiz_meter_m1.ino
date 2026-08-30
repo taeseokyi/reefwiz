@@ -11,7 +11,7 @@
 #define FW_CODE     "RWM1"
 #define FW_NAME     "ReefWiz Meter M-1"
 #define FW_VERSION  "1.0.0"
-#define FW_COMMIT   "41CC8C"
+#define FW_COMMIT   "55DAFC"
 #define FW_VERSTR   FW_NAME " v" FW_VERSION " #" FW_COMMIT
 
 #include "DFRobot_PH.h"
