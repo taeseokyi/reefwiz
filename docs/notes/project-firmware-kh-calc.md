@@ -4,7 +4,7 @@
 
 ---
 
-펌웨어: `firmware/aquawiz_ph_meter_final/aquawiz_ph_meter_final.ino` (Arduino Nano, ATmega328P). README.md에 위치 명시.
+펌웨어: `firmware/reefwiz_meter_m1/reefwiz_meter_m1.ino` (Arduino Nano, ATmega328P). README.md에 위치 명시.
 
 **dKH 계산식 (`calcAndSaveKH`, 차동 방식):**
 ```c

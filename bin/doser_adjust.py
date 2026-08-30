@@ -4,7 +4,7 @@
 동작 한 줄 요약: 최근 7일 dKH 수준·추세를 보고, 목표(기본 7.2, 대시보드에서 변경 가능)에
 일주일에 걸쳐 접근하도록 왼쪽 펌프(AFR 50% 용액)의 1회 가동시간(lrt, ms)을 소폭 조정한다.
 
-- 도저 펌웨어 = ca_reactor_output_controller_v8 (포트=bt_config.json 의 doser, 9600, LF만 — CR 붙으면 미실행).
+- 도저 펌웨어 = reefwiz_doser_d1 (ReefWiz Doser D-1, 구 ca_reactor_output_controller_v8) (포트=bt_config.json 의 doser, 9600, LF만 — CR 붙으면 미실행).
   `lrt <ms>` 는 EEPROM 에 저장되지만 **동작 타이머 인터벌은 `refresh all` 을 보내야
   반영된다**(사용자 확인 2026-07-06; 펌웨어상 setInterval 이 refresh_all_timers() 에만
   있음). 따라서 적용 = `lrt` 전송→에코 검증→`refresh all`→ack 확인 순서. refresh 는

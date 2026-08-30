@@ -1,8 +1,18 @@
 /*
- * AquaWiz - pH/dKH 측정 시스템 (탄산염 화학법)
+ * ReefWiz Meter M-1 (RWM1) - pH/dKH 측정 시스템 (탄산염 화학법)
  * KH_tank = KH_ref x 10^(-DeltapH), DeltapH = pH_ref - pH_tank
  * EEPROM: 0x00-0x07 DFRobot_PH, 0x10 refDKH, 0x14 tempOffset, 0x18 calTemp
  */
+
+// ============================================================
+// 기기 식별 (ver 명령 / 부팅 배너 / help 첫 줄)
+//   FW_COMMIT: 플래시 직전 `git rev-parse --short=6 HEAD` 값(대문자)으로 갱신
+// ============================================================
+#define FW_CODE     "RWM1"
+#define FW_NAME     "ReefWiz Meter M-1"
+#define FW_VERSION  "1.0.0"
+#define FW_COMMIT   "41CC8C"
+#define FW_VERSTR   FW_NAME " v" FW_VERSION " #" FW_COMMIT
 
 #include "DFRobot_PH.h"
 #include <EEPROM.h>
@@ -184,7 +194,7 @@ void printKHHist() {
 void setup() {
     MCUSR = 0; wdt_disable();             // ★부팅 시 워치독 확실히 해제(WDT 리셋 부트루프 방지)
     Serial.begin(9600);  // HC-06 기본 보드레이트
-    BTPRINTLNF("=== AquaWiz v3.0 ===");
+    BTPRINTLNF(FW_VERSTR);
 
     sensors.begin();
     if (sensors.getDeviceCount() == 0) BTPRINTLNF("[WARN] DS18B20 없음!");
@@ -684,6 +694,7 @@ void handleCommand() {
     if (strcmp(cmdL,"stop")==0)     { motorAllStop(); stopAir(); BTPRINTLNF("[STOP] 전체 정지(모터+핀)"); return; }
     if (strcmp(cmdL,"status")==0)   { printStatus(); return; }
     if (strcmp(cmdL,"khhist")==0)   { printKHHist(); return; }
+    if (strcmp(cmdL,"ver")==0)      { BTPRINTLNF(FW_VERSTR); return; }
     if (strcmp(cmdL,"help")==0) { printHelp(); return; }
 
     executeOneCmd(cmdBuf);
@@ -722,9 +733,10 @@ void printStatus() {
 // 도움말
 // ============================================================
 void printHelp() {
+    BTPRINTLNF(FW_VERSTR);
     BTPRINTLNF("=== 명령어 ===");
     BTPRINTLNF("[pH] settime:HH | ref | tank | calkh | calref");
-    BTPRINTLNF("     setref:x | settemp:x | khhist | status | help");
+    BTPRINTLNF("     setref:x | settemp:x | khhist | status | ver | help");
     BTPRINTLNF("[보정] enterph | calph | exitph");
     BTPRINTLNF("[모터] m1f:초 m1b:초 m1s (m2~m4동일)");
     BTPRINTLNF("[직접] ron/roff(에어) ton/toff(PWM) | airoff");

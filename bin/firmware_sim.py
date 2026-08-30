@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AquaWiz 펌웨어 시뮬레이터 (소켓 가상 포트)
+ReefWiz 펌웨어 시뮬레이터 (소켓 가상 포트)
 
-실제 펌웨어(aquawiz_ph_meter_final.ino)의 명령별 응답을 충실히 흉내내, 하드웨어 없이
+실제 펌웨어(reefwiz_meter_m1.ino)의 명령별 응답을 충실히 흉내내, 하드웨어 없이
 measure_kh_once.py 의 측정 흐름·RF 순단 재연결/keepalive/모터정지 로직을 상황별로 검증한다.
 
 규칙(요청):
@@ -174,6 +174,7 @@ class FirmwareSim:
         if m:
             return [f'[M{m.group(1)}] 정지']
         # 에어/솔레노이드
+        if cmd == 'ver':    return ['ReefWiz Meter M-1 v1.0.0 #41CC8C']
         if cmd == 'airoff': return ['[에어] OFF']
         if cmd == 'ron':    return ['[SOL] 참조ON']
         if cmd == 'roff':   return ['[SOL] 참조OFF']

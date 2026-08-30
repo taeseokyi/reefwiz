@@ -127,7 +127,7 @@ A0  (D14) ← DS18B20 DQ      A4/A5     ↔ ADS1115 I2C
 | OneWire | Paul Stoffregen |
 | DallasTemperature | Miles Burton |
 
-1. Arduino IDE에서 [`firmware/aquawiz_ph_meter_final/aquawiz_ph_meter_final.ino`](firmware/aquawiz_ph_meter_final/aquawiz_ph_meter_final.ino) 열기
+1. Arduino IDE에서 [`firmware/reefwiz_meter_m1/reefwiz_meter_m1.ino`](firmware/reefwiz_meter_m1/reefwiz_meter_m1.ino) 열기
 2. 보드: **Arduino Nano**, 프로세서: **ATmega328P** 선택
 3. **HC-06을 D0/D1에서 분리** 후 업로드 → 완료 후 재연결
 
@@ -158,6 +158,7 @@ python bin/measure_kh_once.py COM7   # 포트 직접 지정
 | 분류 | 명령어 |
 |------|--------|
 | pH 측정 | `ref`, `tank`, `calkh`, `calref`, `status`, `khhist` |
+| 식별 | `ver` (기기 버전 한 줄: `ReefWiz Meter M-1 v1.0.0 #커밋코드`) |
 | pH 보정 | `enterph`, `calph`, `exitph` |
 | 설정 | `settime:HH`, `setref:x`, `settemp:x` |
 | 모터 | `m1f:초`, `m1b:초`, `m1s` (m1~m4) |

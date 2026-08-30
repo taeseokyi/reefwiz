@@ -166,7 +166,7 @@ dkh.dat 컬럼: `YYYY-MM-DD HH ref_pH tank_pH ref_kh(앵커 8.448) tank_kh temp`
 
 **근본 원인 (실측 재현으로 확정):** 측정기 아두이노가 **ADS1115(pH ADC) I2C 읽기에서 무한 대기**. Adafruit 라이브러리 `readADC_SingleEnded`의 `while(!conversionComplete());`(타임아웃 없음)이 I2C 읽기 실패 시(신호선 접촉 상실) 영원히 spin → loop 정지 → 명령·출력 전부 멎음(= 어제 8시간 침묵). 사용자가 **I2C 신호선 A4(=SDA)를 뽑아 그 침묵을 그대로 재현**함. 물리 뿌리 = SDA/SCL 접점 flaky.
 
-**펌웨어 복구 (`firmware/aquawiz_ph_meter_final/`, 플래시·검증 완료):**
+**펌웨어 복구 (`firmware/reefwiz_meter_m1/`, 플래시·검증 완료):**
 - `readADSsafe()` = ADS 변환 400ms 상한. `recoverI2C()` = SCL 9펄스 언스틱 → `Wire.begin()` → `ads.begin()` 재초기화. `Wire.setWireTimeout(25ms)`. 부팅 `while(1)` 제거(bounded 재시도). **WDT 8초 안전망**(부팅 `wdt_disable`로 부트루프 방지). 연속 24회 실패 시 측정 중단(응답 유지).
 - **진단 `[RAW] min mid max z`** — 트림평균(상·하위 32/64 폐기)이 가리던 나쁜 읽기(z=실패샘플 수)를 노출.
 - **검증:** A4 뽑기 → 감지·`[I2C]물림→버스복구`·측정중단·**무행**, 재연결 → **z=0 자가복구**. WDT → 진짜 행 시 **8.1초 클린 리셋**(부트루프 없음·EEPROM 보존). 측정 소스(호스트 파싱) 무영향 = 시뮬 **127 PASS**. **정상 측정값 불변**(`readADSsafe` ≡ `readADC_SingleEnded`, 트림·계산 무변경).
